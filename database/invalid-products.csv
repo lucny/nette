@@ -1,0 +1,3 @@
+active;code;name;description;stock;price
+ano;bad code;;Příliš krátký řádek;sklad?;-10
+true;OK-011;Validní řádek;Tento řádek se zpracuje.;2;499,90
