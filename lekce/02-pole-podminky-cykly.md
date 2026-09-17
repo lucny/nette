@@ -1,108 +1,153 @@
 # Lekce 02 – Pole, podmínky, cykly a produkty v paměti
 
-**Čas:** 90 minut  
-**Výchozí stav:** čistá PHP karta produktu z lekce 01.
+**Čas:** 90 minut · **Navazuje na:** [lekci 01](01-web-a-prvni-php.md) · **Nette dnes nepoužíváme.**
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> Ze tří produktů v PHP poli vznikne HTML tabulka. Neaktivní produkt se nevypíše a produkt s malým skladem dostane srozumitelné upozornění.
 
-V `examples/php/02-products.php` vypíšeme několik produktů do tabulky, skryjeme neaktivní položky a upozorníme na nízký sklad.
+## Proč jedna proměnná pro každý produkt nestačí
 
-## Co se naučíme
+V minulé lekci fungovalo `$name`, `$stock` a `$price` pro jediný produkt. Při deseti položkách by vzniklo deset téměř stejných sad proměnných a deset stejných bloků HTML. Pole dovolí data seskupit a cyklus opakující se výpis napsat jen jednou.
 
-- odlišit indexované, asociativní a vnořené pole,
-- použít `if`, `else`, porovnání, `foreach` a `count()`,
-- vysvětlit rozdíl mezi `false`, `0` a `null`,
-- připravit data tak, aby je později mohl načíst repository.
+```text
+produkty v paměti → foreach → if aktivní? → HTML řádek
+                                      └── sklad < 5? → upozornění
+```
 
-## Kde jsme skončili
+> **🧠 Nejdřív přemýšlej**
+>
+> Má produkt se skladem `0` zmizet z tabulky, nebo se má zobrazit jako „objednat“? Obě varianty mohou být správně; program potřebuje, abyste pravidlo určili přesně.
 
-Jedna karta byla zapsaná ručně proměnnými. To se opakuje špatně, proto data seskupíme do pole.
-
-## Nové pojmy
-
-indexované pole, klíč, hodnota, asociativní pole, vnořené pole, podmínka, cyklus, `null`.
-
-## PHP princip
+## Tři podoby polí
 
 ```php
-$product = ['code' => 'NB-001', 'stock' => 12];
-$products = [$product, ['code' => 'MO-004', 'stock' => 4]];
+$colors = ['červená', 'modrá'];              // indexované pole: 0, 1, …
+$product = ['code' => 'NB-001', 'stock' => 12]; // asociativní pole: vlastní klíče
+$products = [$product, ['code' => 'MO-004', 'stock' => 4]]; // vnořené pole
+```
 
+Klíč je jméno zásuvky, hodnota je její obsah. U asociativního pole čteme sklad zápisem `$product['stock']`; šipku `->` používáme až pro objekty, které přijdou v lekci 4.
+
+`0`, `false` a `null` nejsou totéž:
+
+| Hodnota | Význam pro sklad / stav |
+|---|---|
+| `0` | známá číselná hodnota: nic není skladem |
+| `false` | logická nepravda: produkt není aktivní |
+| `null` | hodnota není k dispozici nebo neexistuje |
+
+## Soubor, se kterým pracujeme
+
+**📄 Výukový fragment z:** `examples/php/02-products.php`
+
+```php
+<?php declare(strict_types=1);
+
+$products = [
+	['code' => 'NB-001', 'name' => 'Notebook 15', 'active' => true, 'stock' => 12],
+	['code' => 'MO-004', 'name' => 'Monitor 24', 'active' => true, 'stock' => 4],
+	['code' => 'MS-003', 'name' => 'Myš bez skladu', 'active' => false, 'stock' => 0],
+];
+?>
+<table>
+	<tbody>
+	<?php foreach ($products as $product): ?>
+		<?php if (!$product['active']) { continue; } ?>
+		<tr>
+			<td><?= htmlspecialchars($product['code'], ENT_QUOTES, 'UTF-8') ?></td>
+			<td><?= htmlspecialchars($product['name'], ENT_QUOTES, 'UTF-8') ?></td>
+			<td><?= $product['stock'] < 5 ? 'objednat' : 'v pořádku' ?></td>
+		</tr>
+	<?php endforeach; ?>
+	</tbody>
+</table>
+```
+
+Tento blok je záměrně zkrácený **fragment**: v úplném souboru najdete také `<thead>` a sloupec skladu. Před kopírováním vždy používejte skutečný soubor v repozitáři.
+
+## Rozbor cyklu po jedné části
+
+```php
 foreach ($products as $product) {
-	if ($product['stock'] < 5) {
-		echo 'Objednat'; // Komentář vysvětluje obchodní význam podmínky.
-	}
+```
+
+| Část | Význam |
+|---|---|
+| `foreach` | opakuj blok pro každý prvek |
+| `$products` | pole se všemi produkty |
+| `as` | „ulož aktuální prvek jako“ |
+| `$product` | proměnná platná pro jeden průchod cyklem |
+
+Uvnitř cyklu rozhodne podmínka:
+
+```php
+if (!$product['active']) {
+	continue;
 }
 ```
 
-`$products` je indexované pole, uvnitř jsou asociativní pole. Klíč `stock` vede k hodnotě. `null` znamená „hodnota není k dispozici“, zatímco `0` je skutečná číselná hodnota.
+`!` znamená „negace“. Pokud je `active` nepravda, `continue` přeskočí zbytek právě zpracovávaného produktu a pokračuje dalším. Neukončuje celý cyklus.
 
-## Nette princip
-
-Stále používáme samotné PHP. Nette později převezme vykreslení tabulky do Latte, ale `foreach` a podmínky nezmizí: jen se přesunou do šablony, kde patří výpis.
-
-## Jak to funguje
-
-```text
-pole produktů → foreach → podmínka aktivní → řádek HTML
-                         └→ sklad < 5 → upozornění
-```
+> **💡 Spojení s Nette**
+>
+> `foreach` a podmínky jsou PHP principy. V lekci 6 je budeme zapisovat v Latte jako `{foreach}` a `{if}`, aby šablona zůstala přehlednější. Samotné rozhodování podle dat nezmizí.
 
 ## Postup krok za krokem
 
-1. Otevři `examples/php/02-products.php` a zvýrazni hranaté závorky: jedny vybírají klíč v asociativním poli, druhé vytvářejí seznam.
-2. Přidej čtvrtý produkt s `active => false`. Předem odhadni, zda se objeví.
-3. Změň podmínku `if (!$product['active']) { continue; }` na variantu, která vykreslí pouze produkty skladem.
-4. Přidej řádek s `count($products)` a vysvětli, co měří. Měří počet prvků v paměti, ne počet řádků v budoucí databázi.
-5. Vyzkoušej `null` jako popis produktu. Nezaměňuj chybějící hodnotu za prázdný řetězec bez vysvětlení.
+1. Spusťte kopii `02-products.php` přes Apache stejně jako v lekci 1. Nejdřív spočítejte na papír, kolik řádků čekáte: jsou tři produkty, ale jeden má `active => false`.
+2. Otevřete zdroj a najděte vnější `[` za `$products =`. Označuje celé pole. Potom najděte vnitřní `[` u každého produktu: to je jedno asociativní pole.
+3. Přidejte čtvrtý produkt s vlastním kódem, názvem, aktivitou a skladem. Úmyslně jeden údaj vynechte a sledujte, co se stane při čtení chybějícího klíče; potom jej doplňte.
+4. U produktu nastavte `active => false`. Po obnovení se nesmí objevit v tabulce. Vraťte hodnotu na `true`.
+5. Nastavte sklad na `4`, `5` a `0`. Zapište, kdy přesně se ukáže text `objednat`.
+6. Přidejte pod tabulku `count($products)` a vedle něj vlastní počet skutečně vypsaných řádků. Vysvětlete, proč nejsou vždy stejné.
 
-## Co se právě stalo
+## Experiment: změna jedné podmínky
 
-Cyklus opakuje stejný HTML vzor. Podmínka rozhoduje, zda se řádek vytvoří, a data zůstávají oddělená od výpisu. V lekci 9 stejnou myšlenku zachováme, jen filtr proběhne v SQL před načtením řádků.
+Změňte dočasně pravidlo tak, aby se zobrazovaly jen položky **aktivní a skladem**. Nejdřív napište podmínku česky, například „je aktivní a sklad je větší než nula“. Až potom ji převeďte do PHP:
 
-## Experiment
+```php
+if (!$product['active'] || $product['stock'] <= 0) {
+	continue;
+}
+```
 
-Před spuštěním odhadni počet řádků po zapnutí filtru „aktivní a sklad větší než 0“. Potom změň jednu hodnotu a ověř, že se změnil právě jeden výsledek.
+`||` znamená „nebo“. Tento řádek přeskočí produkt, když je neaktivní **nebo** nemá zásobu. Po experimentu obnovte původní pravidlo a do zápisu uveďte, proč se obchodní pravidla mají nejdřív napsat slovy.
 
-## Miniúkol
+## Samostatný úkol
 
-Vypiš zvláštní text `DOPLNIT SKLAD`, pokud je sklad `0`, a `nízký sklad`, pokud je hodnota 1 až 4. Použij `if`/`elseif`/`else`, nikoli tři nezávislé výpisy.
+Vytvořte tři stavy skladu v samostatné proměnné `$stockLabel`:
+
+- `Vyprodáno` pro `0`,
+- `Nízký sklad` pro `1` až `4`,
+- `Skladem` pro `5` a více.
+
+Použijte `if` / `elseif` / `else`. Text potom escapujte jen tehdy, pokud by pocházel z dat; řetězce, které píšete přímo v programu, jsou pod vaší kontrolou, ale stejný návyk je bezpečný a čitelný.
 
 ## Minikvíz
 
 1. Co je `['code' => 'NB-001']`? **Asociativní pole.**
-2. Co vrátí `count($products)`? **Počet prvků pole.**
-3. Je `0` totéž co `null`? **Ne.**
-4. Co dělá `continue`? **Přeskočí zbytek aktuálního průchodu cyklem.**
+2. Co vrátí `count($products)`? **Počet prvků v poli, ne nutně počet vypsaných řádků.**
+3. Zastaví `continue` celý cyklus? **Ne, přeskočí aktuální průchod.**
+4. Jsou `0` a `null` stejné? **Ne.**
 
-## Nejčastější chyby
+## Kontrolní body, chyby a zdroje
 
-- `=` místo `==` nebo `===`,
-- použití `$product->name` u pole místo `$product['name']`,
-- výpis všech řádků před filtrem,
-- předpoklad, že `false`, `0` a `null` znamenají totéž.
+> **🔎 Ověření**
+>
+> Tabulka obsahuje jen aktivní položky, nízký sklad je rozpoznatelný a při přidání produktu se vytvoří právě jeden nový řádek bez kopírování HTML.
 
-## Kontrolní body
+| Chyba | Jak ji poznáte | Oprava |
+|---|---|---|
+| `$product->name` | PHP hlásí problém s přístupem k hodnotě | pro pole použijte `$product['name']` |
+| `=` v podmínce | podmínka mění hodnotu | porovnání vysvětlíme v další lekci; držte se hotového příkladu |
+| text bez escapingu | název s HTML se vykreslí jako značka | použijte `htmlspecialchars()` |
+| `null` místo skladu | porovnání nedává smysl | nejprve rozhodněte, zda údaj chybí, nebo je nula |
 
-- tabulka se generuje cyklem,
-- neaktivní produkty se nezobrazí,
-- nízký sklad je viditelně označen,
-- každý výpis textu je escapovaný.
-
-## Shrnutí
-
-Pole popisují opakující se data, `foreach` je prochází a podmínky rozhodují o výpisu. Tato logika je základ seznamu produktů, ale zatím pracuje jen s malým polem v paměti.
-
-## Co bude příště
-
-Přidáme funkce a formulář, aby filtr reagoval na query string a mohli jsme mluvit o GET a POST.
+Pokračujte v [kapitole PHP o polích](https://www.php.net/manual/en/language.types.array.php) a [řídicích strukturách](https://www.php.net/manual/en/language.control-structures.php).
 
 ## Stav projektu po lekci
 
-- Funguje tabulka produktů v paměti s filtrem aktivních a nízkého skladu.
-- Data se po obnovení stránky stále načítají z PHP souboru, nikoli z databáze.
-- Přibyl `examples/php/02-products.php`.
+Umíme v paměti držet několik produktů, filtrovat je podmínkou a vykreslit cyklem. Data po obnovení souboru stále nevznikají v databázi – zatím je to výhoda, protože se soustředíme jen na PHP pole.
 
-## Poznámka pro učitele
-
-Nechte studenty napsat podmínku nejdřív slovně. Zastavte se u rozdílu mezi polem a databází. Při nedostatku času vynechte `null` v okrajových variantách, ale nepřeskakujte `foreach` a význam filtru.
+**Příště:** filtr přestane být napsaný napevno; přijmeme jej z URL a rozdělíme práci do pojmenované funkce.

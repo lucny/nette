@@ -1,114 +1,148 @@
 # Lekce 03 – Funkce, typy, formulář a HTTP parametry
 
-**Čas:** 2 × 45 minut  
-**Výchozí stav:** produkty jsou v PHP poli.
+**Čas:** 2 × 45 minut · **Navazuje na:** [lekci 02](02-pole-podminky-cykly.md) · **Nette dnes nepoužíváme.**
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> URL jako `03-filter.php?q=note` přečte filtr, bezpečně jej předá funkci a vypíše pouze odpovídající produkty. Dokážete odlišit validaci vstupu od escapingu výstupu.
 
-`examples/php/03-filter.php` přečte bezpečný text z `$_GET['q']`, zavolá typovanou funkci a zobrazí jen odpovídající produkty.
+## Dva směry dat
 
-## Co se naučíme
+Dosud jsme data psali do souboru. Nyní vstup přichází z prohlížeče. To znamená dvě odlišné otázky:
 
-- napsat funkci s parametrem a návratovým typem,
-- rozlišit `GET`, `POST`, query string, `$_GET` a `$_POST`,
-- vysvětlit `declare(strict_types=1)`, nullable hodnotu a validaci,
-- oddělit validaci vstupu od escapingu výstupu.
+```text
+URL / formulář → Je vstup přijatelný?          = validace
+název produktu → Jak jej vložím do HTML?       = escaping
+```
 
-## Kde jsme skončili
+Validace neudělá HTML bezpečným a escaping neřekne, zda má dotaz správnou délku nebo tvar. Potřebujeme obojí.
 
-Podmínka a cyklus filtrují pole, ale dotaz je zatím napsaný napevno. Vstup od uživatele je nedůvěryhodný, proto jej přijmeme opatrně.
+> **🧠 Nejdřív přemýšlej**
+>
+> Má vyhledávací formulář použít GET, nebo POST? Co se stane s adresou, když filtr pošlete kamarádovi?
 
-## Nové pojmy
+## GET, POST a query string
 
-funkce, parametr, návratová hodnota, type declaration, `string`, `int`, `float`, `bool`, `?string`, GET, POST, query string.
+```text
+https://test.test/03-filter.php?q=note
+                                  └─ query string
+```
 
-## PHP princip
+GET je vhodný pro čtení a filtrování: nic nemění v databázi, URL lze uložit, poslat i obnovit. POST bude patřit změnám dat, například vytvoření produktu. HTTP metoda sama o sobě není kouzelný štít; říká především, jaký druh operace provádíme.
+
+## Soubor a přesný kód filtru
+
+**📄 Výukový fragment z:** `examples/php/03-filter.php`
 
 ```php
-declare(strict_types=1);
+<?php declare(strict_types=1);
 
+/** @param array<int, array<string, mixed>> $products */
 function filterProducts(array $products, ?string $query): array
 {
 	$query = strtolower(trim((string) $query));
-	// Funkce má jeden úkol: vybrat data. Nevykresluje HTML.
+	if ($query === '') {
+		return $products;
+	}
+
 	return array_values(array_filter($products, static function (array $product) use ($query): bool {
-		return $query === '' || str_contains(strtolower($product['name']), $query);
+		return str_contains(strtolower((string) $product['code']), $query)
+			|| str_contains(strtolower((string) $product['name']), $query);
 	}));
 }
+
+$query = $_GET['q'] ?? null;
+$filtered = filterProducts($products, is_string($query) ? $query : null);
 ```
 
-`?string` dovolí řetězec nebo `null`. Převod na `string` řeší pouze očekávaný typ, není to úplná validace. U čísel kontrolujeme rozsah a u textu délku a povolený tvar.
+Tento blok je fragment z téhož souboru; seznam `$products` a bezpečný výpis najdete v úplném souboru. `??` znamená „použij hodnotu vlevo, pokud existuje a není `null`, jinak použij hodnotu vpravo“.
 
-## Nette princip
+## Rozbor podpisu funkce
 
-Čisté PHP zde ukazuje problém, který později řeší Nette Forms: ruční načítání, validaci, zobrazení chyby a zachování hodnoty. Neznamená to, že Nette ruší HTTP; jen poskytne bezpečnější komponentu nad jeho pravidly.
-
-## Jak to funguje
-
-```text
-/03-filter.php?q=note
-        ↓
-$_GET → validace → filterProducts() → escape → HTML
+```php
+function filterProducts(array $products, ?string $query): array
 ```
 
-GET je vhodný pro hledání, protože URL lze zkopírovat a požadavek nemění data. POST bude patřit formulářům, které vytvářejí nebo mění produkt.
+| Část | Význam |
+|---|---|
+| `function` | začíná definici pojmenovaného opakovatelného úkolu |
+| `filterProducts` | jméno, které říká, co funkce dělá |
+| `array $products` | první argument musí být pole |
+| `?string $query` | druhý argument může být text nebo `null` |
+| `: array` | funkce vrátí pole |
+
+Funkce nevypisuje HTML. Má jednu odpovědnost: z předaných produktů vybrat ty, které odpovídají dotazu. Díky tomu ji můžete později vyzkoušet samostatně.
+
+> **⚠️ Pozor**
+>
+> `(string) $query` není úplná validace. Je to obrana před typem v tomto malém příkladu. V reálném formuláři omezíme délku, případně povolené znaky, a chybovou zprávu ukážeme uživateli.
+
+## Proč `strict_types`
+
+PHP je dynamický jazyk a v běžném režimu někdy převádí typy za nás. `declare(strict_types=1)` na začátku souboru říká: pokud naše funkce slibuje určitý typ, chceme chybu vidět dřív než získat překvapivý výsledek. Nechrání však před nepoctivým HTTP requestem; ten stále musíme validovat.
 
 ## Postup krok za krokem
 
-1. Spusť `examples/php/03-filter.php?q=note`. Ověř, že query string je část za `?`.
-2. Změň `q` na text obsahující HTML. Ověř, že se zobrazí jako text, protože výsledek prochází `htmlspecialchars()`.
-3. Odeber `declare(strict_types=1)` a záměrně pošli místo textu pole. Pozoruj rozdíl a vrať deklaraci zpět.
-4. Vytvoř ve formuláři textové pole `name="q"` a `method="get"`. Formulář pouze vytvoří URL; filtr stále provede PHP.
-5. Přidej kontrolu délky dotazu a vysvětli, že klientská kontrola v HTML nenahrazuje serverovou.
+1. Otevřete `examples/php/03-filter.php` a spusťte jej přes Apache s adresou `…/03-filter.php?q=note`.
+2. Označte část URL od `?` dál. Je to query string. Změňte `q` na `KB-002` a ověřte, že se hledá ve kódu i názvu.
+3. Otevřete adresu bez `?q=…`. Řádek s `?? null` musí zajistit, že se neobjeví warning.
+4. Přidejte před výpis jednoduchý HTML formulář:
 
-## Co se právě stalo
+```html
+<form method="get">
+	<label>Hledat <input name="q"></label>
+	<button>Filtrovat</button>
+</form>
+```
 
-HTTP přeneslo vstup, PHP jej předalo funkci a výsledek se escapoval až při výpisu. Validace odpovídá na otázku „je vstup přijatelný?“, escaping na otázku „jak ho bezpečně vložím do HTML?“.
+5. Po odeslání pozorujte adresní řádek. Hodnota se objeví jako `?q=…`; tím formulář nevykonal filtr, jen vytvořil HTTP request. Filtr vykoná až PHP na serveru.
+6. Zadejte do `q` text `<b>note</b>`. Vložte hodnotu zpět do inputu pouze přes `htmlspecialchars()`. Pozorujte, že se neprovede jako HTML.
+7. Změňte metodu formuláře na `post`, odešlete jej a porovnejte URL. Pak vraťte `get`: filtr je čtecí operace a sdílitelná URL je užitečná.
 
-## Experiment
+## Krátká mapa zpracování
 
-Změň metodu formuláře na POST. Sleduj, že `q` zmizí z URL a objeví se v `$_POST`. Napiš, proč by přepnutí na POST zhoršilo sdílení odkazu s filtrem.
+```text
+GET /03-filter.php?q=note
+          ↓
+$_GET['q'] ?? null
+          ↓ kontrola typu
+filterProducts($products, $query)
+          ↓
+htmlspecialchars() při výpisu
+          ↓
+HTML odpověď
+```
 
-## Miniúkol
+## Experiment: kontrolovaný neplatný vstup
 
-Přidej filtr podle kódu nebo názvu. Funkce má stále pouze filtrovat data; nesmí obsahovat `echo`.
+V DevTools nebo ručně v URL zkuste poslat prázdný a velmi dlouhý dotaz. Přidejte pravidlo, že smysluplný dotaz má nejvýše 40 znaků. Pokud je delší, nezobrazujte jej bez upozornění; uložte do proměnné chybovou zprávu a stále bezpečně vypište hodnotu formuláře.
+
+> **💡 Spojení s Nette**
+>
+> Nette Forms v lekci 10 převezmou rutinu načtení POST, zobrazení chyb a zachování hodnot. Stále ale bude platit, že vstup je nedůvěryhodný a pravidla musí kontrolovat server.
+
+## Samostatný úkol
+
+Rozšiřte `filterProducts()` tak, aby našla text v `code` **nebo** `name`, bez `echo` uvnitř funkce. Přidejte vlastní testovací produkt, jehož název obsahuje český znak. Ověřte vyhledání malými písmeny a napište, proč prosté `strtolower()` není univerzální řešení pro každou abecedu.
 
 ## Minikvíz
 
-1. Kde je `q` v URL `/products?q=note`? **V query stringu.**
-2. Co znamená `?string`? **Řetězec nebo `null`.**
+1. Kde najdeme `q` v URL `/products?q=note`? **V query stringu.**
+2. Co znamená `?string`? **Text nebo `null`.**
 3. Je `<input type="number">` serverová validace? **Ne.**
-4. Proč neukládat data z `$_GET` přímo do HTML? **Mohla by obsahovat značky nebo skript.**
+4. K čemu je `htmlspecialchars()`? **K bezpečnému vložení textu do HTML.**
 
-## Nejčastější chyby
+## Kontrolní body a zdroje
 
-- přímé `echo $_GET['q']`,
-- chybějící výchozí hodnota při neexistujícím parametru,
-- funkce s více odpovědnostmi,
-- přesvědčení, že POST je automaticky bezpečný,
-- nechtěná chyba při `null`.
+- [ ] Prázdný parametr `q` nevyvolá warning.
+- [ ] Filtr funguje přes URL i přes formulář s metodou GET.
+- [ ] Funkce vrací data a sama nevykresluje HTML.
+- [ ] Hodnota z formuláře se při opětovném výpisu escapuje.
 
-## Kontrolní body
-
-- filtr funguje z URL i formuláře,
-- neznámý nebo prázdný `q` nezpůsobí warning,
-- HTML je escapované,
-- student vysvětlí rozdíl mezi validací a escapingem.
-
-## Shrnutí
-
-Funkce pojmenovává opakovatelný úkol a typy dokumentují očekávání. GET je vhodný pro čtení a filtry, POST pro změny. Nette později odstraní rutinní část formulářů, ale princip HTTP zůstává stejný.
-
-## Co bude příště
-
-Zabalíme produkt do třídy, ukážeme `private`, konstruktor, namespace a Composer. Potom založíme Nette projekt.
+Čtěte [funkce v PHP](https://www.php.net/manual/en/language.functions.php), [typové deklarace](https://www.php.net/manual/en/language.types.declarations.php), [proměnné z externích zdrojů](https://www.php.net/manual/en/language.variables.external.php) a [MDN: formuláře a GET/POST](https://developer.mozilla.org/en-US/docs/Learn_web_development/Extensions/Forms/Sending_and_retrieving_form_data).
 
 ## Stav projektu po lekci
 
-- Funguje čisté PHP filtrování podle kódu a názvu.
-- Žádný vstup se nebere jako důvěryhodný jen podle HTML atributu.
-- Přibyl `examples/php/03-filter.php`.
+Máme čistý PHP filtr nad polem produktů. Umíme vysvětlit URL, GET, `$_GET`, funkci, parametr, návratovou hodnotu a dvě rozdílné ochrany: validaci a escaping.
 
-## Poznámka pro učitele
-
-Nechte třídu nejdříve předpovědět URL při GET a POST. Na příkladu škodlivého jména ukažte, proč validace a escaping nejsou zaměnitelné. Při nedostatku času vynechte hlubší typové chyby, ale nevynechávejte důvěryhodnost vstupu.
+**Příště:** místo anonymních asociativních polí vytvoříme skutečný objekt `Product` a zjistíme, jak Composer automaticky načítá třídy.

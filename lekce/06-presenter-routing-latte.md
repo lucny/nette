@@ -1,99 +1,127 @@
 # Lekce 06 – Presenter, routing a Latte
 
-**Čas:** 2 × 45 minut  
-**Výchozí stav:** homepage v Nette.
+**Čas:** 2 × 45 minut · **Navazuje na:** [lekci 05](05-prvni-aplikace-v-nette.md) · **Výsledek:** stránka produktů přes presenter a Latte.
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> Dokážete vysvětlit, jak URL `/product` skončí v `ProductPresenter`, proč presenter nepíše SQL do šablony a proč `n:href` odolá změně URL lépe než ručně napsaný odkaz.
 
-Presenter `ProductPresenter`, route `/product` a šablonu s dočasnými produkty. Seznam bude oddělený od HTML pomocí MVP.
+## MVP jako rozdělení odpovědností
 
-## Co se naučíme
-
-- rozlišit Model, View a Presenter,
-- použít `extends`, `protected`, action a render metodu,
-- vytvořit odkaz přes `n:href`,
-- použít Latte `{foreach}`, `{if}` a automatický escaping.
-
-## Kde jsme skončili
-
-Nette vykresluje úvodní stránku. Data zatím vznikají v presenteru nebo v testovacím poli.
-
-## Nové pojmy
-
-MVP, presenter, action, `renderDefault()`, Latte, layout, `n:href`, escaping.
-
-## PHP princip
-
-`extends` dědí chování předka. `protected` dovolí přístup třídě a potomkům, ale ne libovolnému kódu. `renderDefault()` je metoda, do které připravíme data pro view.
-
-## Nette princip
-
-Presenter přijme požadavek, zavolá model a vybere odpověď. Latte je šablonovací jazyk, nikoli PHP. Neobsahuje SQL dotazy ani obchodní pravidla.
-
-## Jak to funguje
+MVP není sada tajemných složek. Je to dohoda, kam patří který druh práce:
 
 ```text
-/product → Router → ProductPresenter::renderDefault()
-                    ↓ data
-                 default.latte → HTML (escapované) → browser
+Model        data a pravidla: repository, validátor, importer
+Presenter    přijme request, zavolá model, připraví odpověď
+View         Latte šablona vytvoří HTML
 ```
+
+V mnoha materiálech se setkáte s MVC. Pro tento kurz stačí vědět, že Nette používá termín *presenter* pro třídu, která koordinuje stránku. Nezavádíme historickou debatu; soustředíme se na odpovědnost.
+
+> **🧠 Nejdřív přemýšlej**
+>
+> Kdyby šablona sama poslala SQL dotaz, kdo by ho mohl rozumně otestovat, znovu použít pro JSON API nebo zkontrolovat při chybě?
+
+## Router: URL není název souboru
+
+**📄 Úplný soubor:** `app/Core/RouterFactory.php`
+
+```php
+public static function createRouter(): RouteList
+{
+	$router = new RouteList;
+	$router->addRoute('api/products/<code>', 'Api:Products:default');
+	$router->addRoute('product[/<action>][/<id>]', 'Product:default');
+	$router->addRoute('sign[/<action>]', 'Sign:in');
+	$router->addRoute('import[/<action>]', 'Import:default');
+	$router->addRoute('<presenter>/<action>[/<id>]', 'Home:default');
+	return $router;
+}
+```
+
+Toto je přesný obsah metody z projektu. Úhlové závorky označují parametr, hranaté závorky nepovinnou část masky. Route `product[/<action>][/<id>]` proto rozumí `/product`, `/product/create` i `/product/edit/4`. Pořadí je důležité: konkrétní API route musí být před obecným fallbackem.
+
+## Presenter je PHP třída
+
+**📄 Fragment z finálního souboru:** `app/Presentation/Product/ProductPresenter.php`
+
+```php
+final class ProductPresenter extends Nette\Application\UI\Presenter
+{
+	public function renderDefault(string $q = '', string $status = 'all', int $page = 1): void
+	{
+		$result = $this->products->search($q, $status, $page);
+		$this->template->products = $result['items'];
+		$this->template->paginator = $result['paginator'];
+	}
+}
+```
+
+Je to **fragment konečného souboru**; pozdější lekce do něj přidávají formuláře, přihlášení a mazání. Pro tuto lekci si všimněte tří věcí: `extends` dědí chování Nette presenteru, parametry odpovídají URL a `$this->template` předává data pohledu. Presenter nevykresluje `<tr>` a repository nevkládá HTML.
+
+## Latte: šablona není PHP ani databáze
+
+**📄 Fragment:** `app/Presentation/Product/default.latte`
+
+```latte
+<tr n:foreach="$products as $product">
+	<td><code>{$product->code}</code></td>
+	<td>{$product->name}</td>
+	<td>{$product->price|number:2,',',' '} Kč</td>
+	<td><a n:href="edit $product->id">Upravit</a></td>
+</tr>
+```
+
+`n:foreach` opakuje HTML element. `{$product->name}` vypisuje proměnnou a Latte ji standardně escapuje. Zápis `|number` je filtr pro formátování. `n:href` vytvoří URL podle routeru; nepíšeme ručně `/product/edit/` a nepřilepujeme k ní neověřený vstup.
+
+> **💡 Co se změnilo od lekce 2**
+>
+> V PHP poli jsme psali `$product['name']`, protože produkt byl asociativní pole. Nette Database bude vracet objekt řádku `ActiveRow`, proto ve finální Latte šabloně čteme `$product->name`. Zápis určuje typ dat, ne „styl Nette“.
 
 ## Postup krok za krokem
 
-1. Vytvoř `app/Presentation/Product/ProductPresenter.php` jako třídu dědící z `Presenter`.
-2. Do `renderDefault()` vlož pole produktů. Komentář má vysvětlit, že jde o dočasné řešení, které v lekci 8 nahradí repository.
-3. V `app/Presentation/Product/default.latte` použij `{foreach $products as $product}` a vypiš tabulku.
-4. Do routeru přidej `product[/<action>][/<id>]`. Zkontroluj, že `/product` míří na `Product:default`.
-5. Vlož do názvu text `<b>Test</b>`. Ověř, že Latte ho zobrazí jako text. Raw HTML by vyžadovalo záměrný a zdůvodněný postup.
+1. Otevřete `RouterFactory.php` a v prohlížeči zadejte `/product`. V Tracy Routing panelu ověřte, že router vybral `Product:default`.
+2. Zadejte `/product/create`. Nyní může route předat akci `create`; formulář doplníme v lekci 10.
+3. Otevřete `ProductPresenter.php` a najděte `renderDefault()`. Vypište si, odkud přijdou tři parametry `q`, `status` a `page`.
+4. Otevřete `default.latte`. Najděte každý výskyt `n:href` a zkuste slovně přeložit, na kterou akci vede.
+5. Jen v lokálních testovacích datech vložte do názvu text `<b>Test</b>`. Stránka ho musí zobrazit jako text, nikoli jako tučný HTML prvek.
+6. Změňte adresu route v kopii projektu a sledujte, že odkazy vytvořené pomocí `n:href` se přizpůsobí. Změnu vraťte zpět.
 
-## Co se právě stalo
+## Experiment: komu patří odpovědnost?
 
-Model je zdroj dat, View je Latte a Presenter je prostředník. MVP není tři magické složky; je to rozdělení odpovědnosti, díky kterému můžeme stejná data později poslat jako JSON.
+Pro každý úkol napište jednu volbu a důvod:
 
-## Experiment
+| Úkol | Presenter | Latte | Repository |
+|---|:---:|:---:|:---:|
+| vybrat produkty z databáze |  |  |  |
+| vypsat `<td>` s názvem |  |  |  |
+| z URL získat stránku |  |  |  |
+| rozhodnout SQL `WHERE` |  |  |  |
 
-Přesuň podmínku „nízký sklad“ z PHP do Latte a porovnej čitelnost. Potom vysvětli, proč SQL dotaz do Latte nepatří.
+Řešení: presenter přijímá URL parametr a předá jej dál; repository řeší dotaz; Latte vytváří HTML. Presenter tedy koordinuje, ale nemá v sobě skrývat celý SQL dotaz ani parser CSV.
 
-## Miniúkol
+## Samostatný úkol
 
-Přidej do tabulky sloupec Aktivní a odkaz „Detail“. Odkaz vytvoř přes `n:href`, ne ručním zřetězením vstupu.
+Přidejte do Latte sloupec stavu produktu. Pro aktivní položku vypište `aktivní`, jinak `neaktivní`. Použijte podmínku Latte a udržte ji krátkou. Pak napište, proč byste do stejné šablony neměli přidat volání `$database->table('product')`.
 
 ## Minikvíz
 
-1. Kdo tvoří HTML? **View/Latte.**
-2. Kdo má získat data? **Modelová vrstva, ne šablona.**
-3. Co dělá `n:href`? **Generuje odkaz přes router.**
-4. Je Latte PHP? **Ne.**
+1. Kdo převádí URL na presenter a akci? **Router.**
+2. Je Latte PHP? **Ne, je to šablonovací jazyk.**
+3. Kdo tvoří HTML řádky? **Latte view.**
+4. Proč `n:href` místo ruční URL? **Router může bezpečně vytvořit aktuální adresu.**
 
-## Nejčastější chyby
+## Kontrolní body a zdroje
 
-- špatný namespace a route,
-- chybějící template `default.latte`,
-- SQL nebo `new` repository přímo v Latte,
-- ruční URL `/product/edit/1` místo generovaného odkazu,
-- vypnutí escapingu bez vysvětlení.
+- [ ] `/product` vrací stránku produktů.
+- [ ] Tracy ukazuje odpovídající presenter a akci.
+- [ ] Název s HTML se nevykoná.
+- [ ] Odkazy používají `n:href`, ne ručně složené URL.
 
-## Kontrolní body
-
-- `/product` vrací HTTP 200,
-- zobrazí se více produktů,
-- odkaz se vygeneruje routerem,
-- názvy se escapují.
-
-## Shrnutí
-
-Presenter nepatří k databázi ani k HTML. Připraví data a vybere šablonu. Latte vykreslí bezpečný výstup a router centralizuje URL.
-
-## Co bude příště
-
-Dočasné pole nahradíme relační databází MySQL. Navrhneme tabulky, typy, klíče a indexy.
+Použijte [Nette routing](https://doc.nette.org/en/application/routing), [presentery](https://doc.nette.org/en/application/presenters), [šablony](https://doc.nette.org/en/application/templates) a [dokumentaci Latte](https://latte.nette.org/en/guide).
 
 ## Stav projektu po lekci
 
-- Funguje seznam dočasných produktů v Nette.
-- Data se ještě neukládají trvale.
-- Přibyly Product presenter, route a Latte template.
+Rozumíme cestě `/product → router → ProductPresenter → default.latte`. Ve finálním projektu už presenter získává skutečná data z repository; v následující lekci nejdřív pochopíme, jak je navrhnout a uložit do MySQL.
 
-## Poznámka pro učitele
-
-Položte otázku „kdo má tuto odpovědnost?“ u každého řádku. Při nedostatku času vynechte porovnání MVC/MVP, ale nesmí zmizet routing, escaping a zákaz dotazů v Latte.
+**Příště:** vytvoříme databázové schema, které bude chránit jedinečnost produktového kódu i bez prohlížeče.

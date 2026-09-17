@@ -1,6 +1,6 @@
 # Mapa kurzu
 
-Začněte v [přípravné lekci](../lekce/0-lekce.md), potom postupujte čísly. Každá lekce navazuje na stav předchozí a obsahuje experiment, samostatný úkol, minikvíz, kontrolní body a učitelskou poznámku.
+Začněte v [přípravné lekci](../lekce/0-lekce.md), potom postupujte čísly. Každá lekce navazuje na stav předchozí a obsahuje cíl, vysvětlení PHP i Nette, experiment, samostatný úkol, minikvíz, kontrolní body a ověřené zdroje. Pro spuštění aplikace a úplný studijní portál použijte [README v kořeni repozitáře](../README.md).
 
 | Pořadí | Lekce | Výsledek |
 |---:|---|---|

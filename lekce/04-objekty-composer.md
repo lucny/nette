@@ -1,30 +1,32 @@
 # Lekce 04 – Objekty, třídy a Composer
 
-**Čas:** 2 × 45 minut  
-**Výchozí stav:** typované funkce a filtr v čistém PHP.
+**Čas:** 2 × 45 minut · **Navazuje na:** [lekci 03](03-funkce-typy-formular.md) · **Na konci připravíme Nette projekt.**
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> Vytvoříte objekt produktu, vysvětlíte rozdíl mezi třídou a instancí, a ověříte, že Composer podle `composer.lock` nainstaloval stejné knihovny a vytvořil autoloader.
 
-V `examples/php/Product.php` vznikne malá třída `Product`. Na konci si Composerem připravíme skutečný Nette web-project.
+## Od pole k objektu
 
-## Co se naučíme
+Pole je výborné pro seznam podobných hodnot. Objekt je užitečný, když chceme data a chování pojmenovat společně. Třída je návrh, instance je konkrétní výrobek podle návrhu.
 
-- vysvětlit třídu, instanci, vlastnost, metodu, konstruktor a `$this`,
-- rozebrat `private`, `new`, `->`, `final`, `namespace` a `use`,
-- vysvětlit, proč Composer instaluje balíčky a generuje autoloading,
-- ověřit `composer.json`, `composer.lock` a `vendor/`.
+```text
+třída Product ── new ──► objekt $product ──► metoda label() ──► text
+```
 
-## Kde jsme skončili
+> **🧠 Nejdřív přemýšlej**
+>
+> Je `Product` samotný notebook, nebo návod, podle kterého lze vytvořit více notebooků? Kdy se objeví konkrétní data `NB-001`?
 
-Produkt je asociativní pole. To je praktické pro začátek, ale u větší aplikace chceme pojmenovanou odpovědnost a kontrolu nad tím, co objekt dovolí.
+## Soubor s objektem
 
-## Nové pojmy
-
-třída, objekt, instance, vlastnost, metoda, konstruktor, viditelnost, `final`, namespace, autoloading, balíček.
-
-## PHP princip
+**📄 Úplný soubor:** `examples/php/Product.php`
 
 ```php
+<?php declare(strict_types=1);
+
+namespace Course\Example;
+
 final class Product
 {
 	public function __construct(
@@ -38,81 +40,118 @@ final class Product
 		return $this->code . ' – ' . $this->name;
 	}
 }
+```
 
+Tento kód je celý soubor. Neukazuje ještě spuštění s `new Product(…)`; to může být v jiném souboru, který třídu načte.
+
+## Rozebíráme konstruktor bez zkratek
+
+```php
+public function __construct(
+	private string $code,
+	private string $name,
+) {
+}
+```
+
+| Zápis | Co dělá |
+|---|---|
+| `public` | konstruktor mohou zavolat části programu, které smějí tvořit produkt |
+| `function` | začíná metodu |
+| `__construct` | speciální metoda spuštěná při `new` |
+| `private` | vlastnost zůstává uvnitř objektu |
+| `string` | očekávaný typ hodnoty |
+| `$code` | název vlastnosti i parametru díky constructor property promotion |
+
+`private string $code` je novější úsporný zápis PHP: vytvoří vlastnost a zároveň přijme hodnotu konstruktoru. Delší, ale významově stejná varianta by měla vlastnost nad konstruktorem a uvnitř přiřazení `$this->code = $code;`.
+
+```php
 $product = new Product('NB-001', 'Notebook');
 echo $product->label();
 ```
 
-`class` je popis, `new` z něj vytvoří objekt a `->` volá jeho metodu. `private` chrání vnitřní stav. `final` říká, že třídu v tomto učebním příkladu nechceme dědit. Namespace zabraňuje kolizím názvů; `use` zkrátí dlouhé jméno.
+`new` vytváří konkrétní objekt. `$product->label()` znamená „na objektu v proměnné `$product` zavolej metodu `label`“. `$this` uvnitř metody znamená právě ten objekt, na němž metoda běží.
 
-## Nette princip
+> **⚠️ Pozor**
+>
+> `private` není šifrování. Je to pravidlo návrhu programu: okolní kód nemá objektu libovolně měnit vnitřní stav. Přístupové řízení uživatele aplikace řešíme až v lekci 12.
 
-Composer není Nette. Je to nástroj PHP ekosystému. Nette je skupina balíčků, které Composer stáhne do `vendor/` a propojí přes `vendor/autoload.php`.
+## Namespace a `use`
 
-## Jak to funguje
+V různých knihovnách může existovat třída `Product`. Namespace je příjmení třídy: `Course\Example\Product` je jednoznačnější než samotné `Product`. V jiném souboru lze dlouhý název zkrátit:
+
+```php
+use Course\Example\Product;
+
+$product = new Product('NB-001', 'Notebook');
+```
+
+`use` objekt nevytváří ani nenačítá soubor. Jen dovolí použít kratší jméno. O automatické načtení souboru se stará Composer.
+
+## Composer: problém, který řeší
+
+Bez Composeru by každý soubor ručně psal `require` na všechny třídy a jejich závislosti. Pořadí by se snadno rozbilo. Composer místo toho čte `composer.json`, instaluje balíčky do `vendor/` a vytvoří `vendor/autoload.php`.
 
 ```text
-composer.json → Composer → composer.lock + vendor/ → require vendor/autoload.php
-                                                     ↓
-                                              třídy jsou dostupné
+composer.json + composer.lock
+             ↓ composer install
+vendor/ + vendor/autoload.php
+             ↓ require
+PHP třídy z projektu i knihoven jsou dostupné
 ```
+
+| Soubor / složka | Úloha |
+|---|---|
+| `composer.json` | požadavky projektu a nastavení autoloadingu |
+| `composer.lock` | přesně vybrané verze pro opakovatelnou instalaci |
+| `vendor/` | stažené knihovny a vygenerovaný autoloader |
+| `vendor/autoload.php` | soubor, který připojuje `www/index.php` a CLI skripty |
 
 ## Postup krok za krokem
 
-1. Projdi `examples/php/Product.php` a popiš každý token konstruktoru: typ, viditelnost, vlastnost, `$this`.
-2. Vytvoř `new Product('KB-002', 'Klávesnice')` a před spuštěním odhadni výstup.
-3. V kořeni projektu spusť `composer validate`. Zkontroluj, že `composer.json` popisuje závislosti a `composer.lock` jejich přesné verze.
-4. Otevři `composer.json`. Všimni si PSR-4 mapování `App\` na `app`. Nette 3.3 používá PHP 8.3+, což odpovídá prostředí kurzu.
-5. Spusť `composer create-project nette/web-project` jen při zakládání nového projektu. V tomto repozitáři už kostra vznikla z oficiálního web-projectu; proto ji neupravuj přepsáním celého repozitáře.
+1. Otevřete `examples/php/Product.php`. U každého `private` vysvětlete, která hodnota se chrání a proč.
+2. Vytvořte malý spouštěcí soubor s `require` a `new Product('KB-002', 'Klávesnice')`. Než jej spustíte, odhadněte výsledek `label()`.
+3. V kořeni repozitáře spusťte `composer validate`. Tento příkaz kontroluje formát `composer.json`; nestahuje nové verze.
+4. Otevřete `composer.json` a vyhledejte požadavek na PHP a mapování `App\` na adresář `app/`. To je PSR-4 pravidlo pro naši aplikaci.
+5. Spusťte `composer install`. Pokud už `composer.lock` existuje, Composer použije jeho přesné verze. Nevyměňuje je automaticky za nejnovější.
+6. Ověřte, že existuje `vendor/autoload.php`. Složku `vendor/` ručně neupravujte a necommitujte; znovu vznikne z Composer metadat.
+7. Teprve nyní se podívejte na strukturu Nette projektu. V příští lekci nebudeme začínat novým prázdným projektem: tento repozitář už vychází z oficiálního `nette/web-project`.
 
-## Co se právě stalo
+## Experiment: co skutečně chrání `private`
 
-Autoloading dovolí napsat `new Product` bez ručního `require` každé třídy. Nette později využije stejný mechanismus pro presentery, repository i služby.
+V kopii třídy změňte `private string $code` na `public string $code`. Ve spouštěcím souboru pak zkuste `$product->code = 'JINÝ-KÓD';`. Uvidíte, že změna je možná. Vraťte `private` a místo přímé změny navrhněte metodu, která by mohla nový kód ověřit.
 
-## Experiment
+## Samostatný úkol
 
-Změň `private` na `public` a vysvětli, jak se mění možnost objekt upravit zvenku. Potom změnu vrať a přidej metodu, která ověřuje validní kód.
+Rozšiřte třídu o `private int $stock` a metodu:
 
-## Miniúkol
+```php
+public function isLowStock(): bool
+{
+	return $this->stock < 5;
+}
+```
 
-Přidej `stock` jako typovanou vlastnost a metodu `isLowStock(): bool`. Komentář má vysvětlit hranici 5, ne přepsat název metody.
+Před spuštěním napište dvě hodnoty skladu, pro které čekáte `true` a `false`. Komentář, pokud jej použijete, má vysvětlit obchodní hranici pěti kusů, ne opisovat název metody.
 
 ## Minikvíz
 
 1. Co je instance? **Konkrétní objekt vytvořený z třídy.**
 2. Co dělá `->`? **Přistupuje k metodě nebo vlastnosti objektu.**
-3. Co je Composer? **Správce PHP závislostí.**
-4. Patří `vendor/` do Git repozitáře? **Obvykle ne; vygeneruje se z lock souboru.**
+3. Co dělá Composer? **Instaluje závislosti a vytváří autoloading.**
+4. Proč je v repozitáři `composer.lock`? **Aby všichni instalovali stejné ověřené verze.**
 
-## Nejčastější chyby
+## Kontrolní body a zdroje
 
-- zapomenutý namespace nebo špatné `use`,
-- `new` bez povinných argumentů,
-- ruční kopírování knihoven místo Composeru,
-- úprava `composer.lock` textovým editorem,
-- záměna třídy a objektu.
+- [ ] Dokážete rozlišit třídu, objekt, vlastnost a metodu.
+- [ ] `label()` vrací kód i název pro nový objekt.
+- [ ] `composer validate` projde.
+- [ ] Po `composer install` existuje `vendor/autoload.php`.
 
-## Kontrolní body
-
-- třída vytvoří čitelný štítek produktu,
-- `composer validate` projde,
-- `vendor/autoload.php` existuje po instalaci,
-- student vysvětlí rozdíl PHP jazyk vs. Composer.
-
-## Shrnutí
-
-Třída spojuje data a chování. Composer řeší instalaci a autoloading. Na tomto základu můžeme přidat Nette, jehož oficiální web-project už obsahuje doporučenou strukturu `app/`, `config/`, `www/` a `vendor/`.
-
-## Co bude příště
-
-Spustíme první vlastní Nette presenter a projdeme tok requestu přes Bootstrap, DI container, router a Latte.
+Použijte [PHP: třídy a objekty](https://www.php.net/manual/en/language.oop5.php), [namespaces](https://www.php.net/manual/en/language.namespaces.php), [Composer basic usage](https://getcomposer.org/doc/01-basic-usage.md) a [oficiální instalaci Nette](https://doc.nette.org/en/installation).
 
 ## Stav projektu po lekci
 
-- Funguje objektový příklad produktu a Composer projekt.
-- Nette ještě neposkytuje seznam z databáze; máme jen kostru aplikace.
-- Přibyl `examples/php/Product.php` a Composer metadata.
+Máme pojmenovaný objektový příklad a funkční Composer prostředí. Nette zatím nepoužíváme k datům ani formulářům, ale máme všechny knihovny, které bude potřebovat první webová aplikace.
 
-## Poznámka pro učitele
-
-Rozložte konstruktor na malé části na tabuli. Studentům nepředávejte větu „tohle je dependency injection“ dříve, než umí vysvětlit parametr a `new`. Při nedostatku času lze vynechat dědičnost, nikoli autoloading.
+**Příště:** otevřeme `www/index.php` a krok za krokem projdeme, jak Nette promění request na HTML odpověď.

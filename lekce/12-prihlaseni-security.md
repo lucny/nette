@@ -1,100 +1,154 @@
 # Lekce 12 – Přihlášení a Nette Security
 
-**Čas:** 2 × 45 minut  
-**Výchozí stav:** produktová administrace bez přístupu.
+**Čas:** 2 × 45 minut · **Navazuje na:** [lekci 11](11-editace-validace-mazani.md) · **Výsledek:** chráněná administrace se session.
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> Nepřihlášený návštěvník se na `/product` nedostane. Výukový účet vytvoříte CLI skriptem, databáze obsahuje pouze hash hesla a po logoutu chráněná stránka opět vyžaduje přihlášení.
 
-Tabulku `user`, `UserRepository`, vlastní `Authenticator`, login form, logout a ochranu produktových presenterů. Účet vytvoříme CLI příkazem `bin/create-user.php`.
+## Tři podobná, ale odlišná slova
 
-## Co se naučíme
+| Pojem | Otázka | Příklad v aplikaci |
+|---|---|---|
+| identifikace | „Za koho se vydáváš?“ | e-mail `student@example.test` |
+| autentizace | „Dokážeš to?“ | ověření hesla proti hashi |
+| autorizace | „Co smíš?“ | přihlášený uživatel smí do administrace |
 
-- odlišit identifikaci, autentizaci a autorizaci,
-- použít `interface`, `implements` a výjimku,
-- bezpečně hashovat heslo přes Nette `Passwords`,
-- vysvětlit session a proč nevytvářet veřejnou stránku pro admina.
+Schovat tlačítko není autorizace. Server musí přístup zkontrolovat pro každý chráněný request.
 
-## Kde jsme skončili
+> **🧠 Nejdřív přemýšlej**
+>
+> Kdyby útočník znal přímou adresu `/product`, pomohlo by, že v navigaci nevidí odkaz? Kde musí být skutečná kontrola?
 
-Kdokoli, kdo zná URL, může otevřít CRUD. To je bezpečnostní chyba, nikoli jen chybějící tlačítko.
-
-## Nové pojmy
-
-identity, autentizace, autorizace, session, authenticator, hash, výjimka, interface.
-
-## PHP princip
-
-Interface je kontrakt: třída, která jej `implements`, musí dodat požadovanou metodu. `try/catch` zachytí očekávané selhání přihlášení a zobrazí obecnou zprávu.
-
-## Nette princip
-
-Nette `User` drží stav přihlášení a zavolá `Authenticator`. Identity obsahuje ID a role. Heslo se ověří proti hashi funkcí `Passwords::verify`; otevřené heslo se do databáze nikdy neuloží.
-
-## Jak to funguje
+## Heslo se neukládá
 
 ```text
-email + heslo → User::login → Authenticator → UserRepository → user.password_hash
-                         ↓ úspěch
-                      session identity → chráněný presenter
+uživatel zadá heslo
+        ↓
+Nette Passwords vytvoří jednosměrný hash
+        ↓
+databáze uloží password_hash
+        ↓
+při loginu verify(otevřené heslo, uložený hash)
 ```
+
+Hash není šifrované heslo, které bychom chtěli dešifrovat. Je to jednosměrný otisk určený k bezpečnému ověření. Sůl a parametry algoritmu jsou součástí výsledného hashe; do tabulky proto máme `VARCHAR(255)`.
+
+**📄 Vytvoření výukového účtu:** `bin/create-user.php`
+
+```php
+$database->table('user')->insert([
+	'email' => $email,
+	'password_hash' => $passwords->hash($password),
+	'created_at' => new DateTimeImmutable,
+]);
+```
+
+Skript je mimo `www/`, proto jej nelze vyvolat přes prohlížeč jako veřejnou stránku „vytvoř admina“.
+
+> **⚠️ Pozor**
+>
+> `student@example.test` a `vyukove-heslo` jsou veřejné výukové údaje. Použijte je jen lokálně. Pro skutečné systémy nikdy nevkládejte heslo do seed SQL ani do dokumentace.
+
+## Interface a authenticator
+
+**📄 Přesná citace třídy z:** `app/Model/User/Authenticator.php`
+
+```php
+final class Authenticator implements AuthenticatorInterface
+{
+	public function __construct(
+		private UserRepository $users,
+		private Passwords $passwords,
+	) {
+	}
+
+	public function authenticate(string $user, string $password): SimpleIdentity
+	{
+		$row = $this->users->findByEmail($user);
+		if ($row === null || !$this->passwords->verify($password, (string) $row['password_hash'])) {
+			throw new AuthenticationException('Neplatný e-mail nebo heslo.');
+		}
+
+		return new SimpleIdentity((int) $row['id'], ['admin'], ['email' => (string) $row['email']]);
+	}
+}
+```
+
+`implements AuthenticatorInterface` je PHP kontrakt: třída slibuje, že nabídne metodu `authenticate`. `throw` vyvolá očekávaný chybový stav. Login presenter jej zachytí přes `try/catch` a zobrazí jednu obecnou zprávu, aby neprozradil, zda existuje e-mail nebo je špatné heslo.
+
+## Ochrana presenteru
+
+**📄 Fragment:** `ProductPresenter::startup()`
+
+```php
+protected function startup(): void
+{
+	parent::startup();
+	if (!$this->getUser()->isLoggedIn()) {
+		$this->redirect('Sign:in', ['backlink' => $this->storeRequest()]);
+	}
+}
+```
+
+`protected` dovoluje frameworku a potomkům používat metodu, ale ne libovolnému kódu zvenku. `parent::startup()` zachová životní cyklus třídy, z níž dědíme. `storeRequest()` uloží původní adresu, aby se po loginu mohl uživatel vrátit tam, kam mířil.
+
+## Login callback a session
+
+**📄 Fragment:** `app/Presentation/Sign/SignPresenter.php`
+
+```php
+try {
+	$this->getUser()->login($data->email, $data->password);
+} catch (AuthenticationException) {
+	$form->addError('Neplatný e-mail nebo heslo.');
+	return;
+}
+```
+
+Nette `User` předá údaje authenticatoru. Po úspěchu uloží identitu do session podle konfigurace. Prohlížeč nese identifikátor session v cookie; samotné heslo se do cookie neukládá.
 
 ## Postup krok za krokem
 
-1. Spusť `database/schema.sql`, pokud tabulka `user` neexistuje.
-2. Projdi `app/Model/User/Authenticator.php`. Komentář vysvětlí, proč vrací `SimpleIdentity` a proč při chybě nesděluje, zda existuje e-mail.
-3. Vytvoř účet příkazem `php bin/create-user.php student@example.test vyukove-heslo`. Výukové heslo není určeno pro skutečný účet.
-4. Otevři `/product` bez session. Presenter uloží backlink a přesměruje na `/sign/in`.
-5. Přihlas se, zkontroluj cookie/session a otevři seznam. Potom klikni Odhlásit a ověř zneplatnění session.
-6. V `services.neon` ověř, že authenticator dostává UserRepository a Passwords přes DI.
+1. Ověřte, že existuje tabulka `user` z lekce 7.
+2. Spusťte přesně tento lokální příkaz:
 
-## Co se právě stalo
+```bash
+php bin/create-user.php student@example.test vyukove-heslo
+```
 
-Identifikace říká „kdo tvrdí, že je“, autentizace ověřuje heslo a autorizace rozhodne, co smí. V tomto školním projektu má přihlášený uživatel roli `admin`; administraci uživatelů nebudujeme.
+3. V MySQL si zobrazte `email` a `password_hash`. Hash nesmí vypadat jako zadané heslo.
+4. Otevřete `/product` v anonymním okně prohlížeče. Musíte být přesměrováni na `/sign`.
+5. Přihlaste se správným heslem. Ověřte návrat na původní stránku a dostupnost administrace.
+6. Přihlaste se s chybným heslem a s neexistujícím e-mailem. Zpráva musí být stejně obecná.
+7. Klikněte Odhlásit, zavřete stránku produktu a znovu ji otevřete. Bez nové session musí být chráněná.
 
-## Experiment
+## Experiment: co prozrazuje chybová zpráva
 
-Zkus změnit jeden znak hesla v login formuláři. Ověř, že chyba vypadá stejně jako neexistující e-mail. Tím neprozrazujeme existenci účtů.
+Vytvořte si dvě situace: správný e-mail + špatné heslo a neexistující e-mail + libovolné heslo. Porovnejte odpovědi. Pak vysvětlete, proč zpráva „e-mail neexistuje“ může útočníkovi usnadnit zjišťování účtů.
 
-## Miniúkol
+## Samostatný úkol
 
-Přidej do layoutu e-mail přihlášeného uživatele, ale nikdy nevypisuj hash. Vysvětli, proč identity zůstává v session a proč se dá session zneplatnit logoutem.
+Do layoutu přidejte zobrazení e-mailu přihlášeného uživatele a odkaz na logout. Nikdy nevypisujte `password_hash`. Napište, proč e-mail může být součástí identity v session, ale hash hesla ne.
 
 ## Minikvíz
 
-1. Co ukládáme do DB? **Hash hesla, ne heslo.**
+1. Co ukládáme do databáze? **Hash hesla, ne heslo.**
 2. Co je autentizace? **Ověření identity.**
-3. Kdo rozhoduje o přístupu presenteru? **Aplikační kontrola uživatele/role.**
-4. Proč není vhodný veřejný create-admin formulář? **Kdokoli by mohl vytvořit privilegovaný účet.**
+3. Kde chráníme `/product`? **Na serveru ve startupu presenteru.**
+4. Proč nevytvořit veřejný formulář pro admina? **Kdokoli by mohl vytvořit privilegovaný účet.**
 
-## Nejčastější chyby
+## Kontrolní body a zdroje
 
-- plaintext heslo v `seed.sql`,
-- hash vytvořený vlastním MD5/SHA1 místo password hashe,
-- detailní „e-mail neexistuje“ vs. „heslo je špatně“,
-- ochrana jen v navigaci,
-- zapomenutý logout s aktivní session.
+- [ ] Anonymní request na CRUD přesměruje na login.
+- [ ] Správné heslo přihlásí, špatné nic neprozradí.
+- [ ] Tabulka obsahuje hash, ne plaintext.
+- [ ] Logout zruší přístup k chráněné stránce.
 
-## Kontrolní body
-
-- bez loginu je CRUD nedostupný,
-- správné heslo přihlásí,
-- nesprávné heslo nic neprozradí,
-- databáze obsahuje jen hash.
-
-## Shrnutí
-
-Nette Security poskytuje workflow, ale databázové ověření píšeme sami. Bezpečnost není schování odkazu; server musí zkontrolovat session při každém chráněném požadavku.
-
-## Co bude příště
-
-Přidáme upload CSV, kontrolu hlavičky, validaci řádků, transakci a UPSERT podle unikátního kódu.
+Čtěte [Nette autentizaci](https://doc.nette.org/en/security/authentication), [Nette Passwords](https://doc.nette.org/en/security/passwords), [PHP password hashing](https://www.php.net/passwords) a [konfiguraci Nette Security](https://doc.nette.org/en/security/configuration).
 
 ## Stav projektu po lekci
 
-- Funguje login, logout a ochrana administrace.
-- Hesla se vytvářejí CLI postupem a ukládají se jako hash.
-- Přibyly UserRepository, Authenticator, Sign presenter a `bin/create-user.php`.
+CRUD produktů je chráněný session a hesla jsou jednosměrně hashovaná. Import CSV zatím nepřijímáme; další lekce přidá nový nedůvěryhodný vstup a samostatnou službu pro jeho zpracování.
 
-## Poznámka pro učitele
-
-Nechte studenty opakovat slovní trojici identifikace–autentizace–autorizace. Při nedostatku času vynechte role, nesmí se přeskočit hashování a kontrola serverového přístupu.
+**Příště:** upload projde od kontroly souboru přes hlavičku CSV a validaci řádků až k transakčnímu UPSERTu.

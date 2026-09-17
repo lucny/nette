@@ -1,104 +1,135 @@
 # Lekce 10 – Nette Forms a přidání produktu
 
-**Čas:** 2 × 45 minut  
-**Výchozí stav:** přihlášený seznam produktů s repository.
+**Čas:** 2 × 45 minut · **Navazuje na:** [lekci 09](09-seznam-filtrovani-strankovani.md) · **Výsledek:** validovaný formulář vytvoří produkt.
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> Stránka `/product/create` přijme POST, zobrazí chyby pro neplatná data, vytvoří validní produkt a po uložení přesměruje na seznam, aby obnovení stránky neprovedlo druhý INSERT.
 
-Komponentu `createComponentProductForm()` v `ProductPresenter`. Formulář ověří aktivitu, kód, název, popis, sklad a cenu a po úspěchu INSERTne produkt.
+## Nejprve HTTP, až potom formulářová knihovna
 
-## Co se naučíme
+Obyčejný HTML formulář umí odeslat hodnoty. Sám ale nezaručí, že request přišel z našeho prohlížeče nebo že cena a sklad dávají smysl. Každý může vytvořit vlastní POST request. Proto validaci vždy provádí server.
 
-- porovnat ruční HTML form a Nette Form,
-- vysvětlit control, hodnotu, `required`, `addRule`, callback a `onSuccess`,
-- pochopit, že klientská validace nenahrazuje server,
-- použít Post/Redirect/Get po uložení.
+```text
+GET /product/create → formulář
+POST /product/create → Nette Form → validace → repository INSERT
+                                                    ↓
+                                        303 redirect → GET /product
+```
 
-## Kde jsme skončili
+Tento vzor se jmenuje **Post/Redirect/Get (PRG)**. Bez přesměrování by prohlížeč při obnovení stránky nabídl znovu odeslat stejný POST.
 
-Seznam čte z databáze. Nemáme bezpečný způsob, jak vložit nový řádek.
+> **🧠 Nejdřív přemýšlej**
+>
+> Je atribut `required` v HTML důkazem, že server nikdy nedostane prázdný název? Jak lze request odeslat bez našeho formuláře?
 
-## Nové pojmy
+## Nette Form je PHP objekt
 
-Form, control, callback, `onSuccess`, `stdClass`, `INSERT`, PRG, serverová validace.
+**📄 Fragment:** `app/Presentation/Product/ProductPresenter.php`
 
-## PHP princip
+```php
+protected function createComponentProductForm(): Form
+{
+	$form = new Form;
+	$form->addCheckbox('active', 'Produkt je aktivní')->setDefaultValue(true);
+	$form->addText('code', 'Kód')->setRequired('Zadejte kód produktu.')->setMaxLength(40);
+	$form->addText('name', 'Název')->setRequired('Zadejte název produktu.')->setMaxLength(160);
+	$form->addTextArea('description', 'Popis')->setMaxLength(2000);
+	$form->addInteger('stock', 'Sklad')->setRequired('Zadejte stav skladu.')
+		->addRule(Form::Min, 'Sklad nesmí být záporný.', 0);
+	$form->addFloat('price', 'Cena')->setRequired('Zadejte cenu.')
+		->addRule(Form::Min, 'Cena nesmí být záporná.', 0);
+	$form->addSubmit('save', 'Přidat produkt');
+	$form->onSuccess[] = $this->productFormSucceeded(...);
+	return $form;
+}
+```
+
+Je to výukový fragment: ve finálním souboru se popisek tlačítka mění podle editace. `new Form` vytvoří objekt, `addText()` přidá control a metoda `setRequired()` vrací tentýž control, proto lze volání řetězit.
+
+### Co znamená callback
 
 ```php
 $form->onSuccess[] = $this->productFormSucceeded(...);
 ```
 
-Zápis předává metodu jako callable. Nette ji zavolá po úspěšném zpracování formuláře. Callback dostane formulář a data; data nejsou důvodem k vynechání další validace v modelu.
+`onSuccess` je pole callbacků. `[]` přidá další prvek na konec pole. `$this->productFormSucceeded(...)` vytvoří callable – odkaz na metodu aktuálního presenteru. Nette ji zavolá až když zpracování formuláře uspěje.
 
-## Nette princip
+## Druhá vrstva validace
 
-`Nette\Application\UI\Form` je komponenta presenteru. Generuje HTML, načte POST, validuje a vystaví chyby. Po uložení presenter přesměruje na seznam, takže obnovení stránky neopakuje POST.
+**📄 Fragment:** `app/Model/Product/ProductInputValidator.php`
 
-## Jak to funguje
-
-```text
-POST form → Nette Form → validace → ProductRepository::create()
-                                  ↓
-                              redirect GET /product
+```php
+if ($code === '' || !preg_match('/^[A-Z0-9][A-Z0-9-]{2,39}$/', $code)) {
+	$errors[] = 'Kód musí mít 3–40 znaků a obsahovat velká písmena, číslice nebo pomlčky.';
+}
+if (!is_numeric($price) || (float) $price < 0) {
+	$errors[] = 'Cena musí být nezáporné číslo.';
+}
 ```
+
+Formulář poskytuje dobré chybové zprávy a klientské pohodlí. Modelový validátor chrání stejné pravidlo i při CSV importu – jeden zdroj pravdy pro data z různých vstupů.
+
+> **⚠️ Pozor**
+>
+> `addFloat()` převede vstup do tvaru, který očekává aplikace, ale pro peněžní hodnotu v databázi stále používáme `DECIMAL`. Nevynechávejte databázovou ani modelovou kontrolu jen proto, že formulář vypadá správně.
+
+## Zpracování úspěšného formuláře
+
+**📄 Fragment:** `ProductPresenter::productFormSucceeded()`
+
+```php
+$errors = $this->validator->validate($values);
+if ($errors !== []) {
+	foreach ($errors as $error) {
+		$form->addError($error);
+	}
+	return;
+}
+
+$this->products->create($values);
+$this->flashMessage('Produkt byl přidán.', 'success');
+$this->redirect('default');
+```
+
+`!== []` znamená „pole chyb není prázdné“. `foreach` přidá každou chybu formuláři a `return` zastaví metodu dřív, než by se volal INSERT. `flashMessage` přežije jedno přesměrování; `redirect('default')` vytváří GET na seznam.
 
 ## Postup krok za krokem
 
-1. V `ProductPresenter` vytvoř controls přes `addCheckbox`, `addText`, `addTextArea`, `addInteger`, `addFloat` a `addSubmit`.
-2. Povinné hodnoty označ `setRequired`. Rozsah skladu a ceny omez `addRule(Form::Min, ...)`.
-3. V callbacku sestav `$values`. Komentář vysvětlí, proč se normalizuje kód a proč se cena převádí až po validaci.
-4. `ProductInputValidator` zopakuje pravidla, protože POST může přijít mimo náš formulář.
-5. Při úspěchu zavolej `create()`, nastav flash message a `redirect('default')`.
-6. Zkus prázdný název a záporný sklad. Ověř, že server chybu odmítne i při ručním POST.
+1. Přihlaste se a otevřete `/product/create`. Podívejte se do zdroje HTML: Nette vytvořilo formulář a atributy validace, ale to není jediná ochrana.
+2. Otevřete presenter a najděte každý control. Ke každému napište, zda vrací text, číslo, boolean nebo soubor.
+3. Odešlete prázdný formulář. Poznamenejte si chybové zprávy a ověřte, že se nevytvořil nový řádek v MySQL.
+4. Odešlete sklad `-1` a cenu `-10`. Určete, které pravidlo chybu hlásí.
+5. Odešlete platná data s jedinečným kódem, například `STUDENT-01`. Po přesměrování produkt vyhledejte a ověřte, že existuje jednou.
+6. Obnovte výsledný seznam. Prohlížeč nesmí nabízet opakované odeslání formuláře, protože aktuální request je GET.
+7. Zkuste vytvořit druhý produkt se stejným kódem. Přečtěte chybovou větev pro `UniqueConstraintViolationException`; unikátní pravidlo platí i mimo formulář.
 
-## Co se právě stalo
+## Experiment: klientská a serverová ochrana
 
-HTML `required` zlepšuje UX, ale útočník může poslat vlastní request. Server musí data ověřit znovu. PRG oddělí změnu dat od následného načtení seznamu.
+V DevTools upravte nebo odstraňte HTML atribut `min` / `required` a odešlete záporný sklad. Neberte tento postup jako útok na cizí web – pracujete výhradně na své lokální aplikaci. Zapište, že klientská kontrola se dá obejít, ale server a databáze hodnotu nepřijmou.
 
-## Experiment
+## Samostatný úkol
 
-V Developer Tools vypni klientskou validaci nebo odešli ruční POST s `stock=-1`. Zapiš, která vrstva chybu zastavila.
-
-## Miniúkol
-
-Přidej pravidlo maximální délky popisu a uživatelskou chybovou zprávu v češtině. Ověř, že se stará hodnota ve formuláři zachová.
+Přidejte srozumitelné pravidlo maximální délky popisu a vyzkoušejte je textem o jeden znak delším. Ověřte, že po chybě zůstanou už vyplněné hodnoty formuláře dostupné k opravě.
 
 ## Minikvíz
 
-1. Kdy se spustí `onSuccess`? **Po úspěšné validaci formuláře.**
-2. Nahrazuje `required` serverovou kontrolu? **Ne.**
-3. Proč redirect po INSERTu? **PRG zabrání opakování POST při reloadu.**
-4. Kam patří SQL insert? **Do repository/modelu.**
+1. Kdy se spustí `onSuccess`? **Po úspěšném zpracování a validaci Nette Form.**
+2. Nahrazuje HTML `required` serverovou kontrolu? **Ne.**
+3. Proč po INSERTu přesměrováváme? **PRG brání opakovanému POST při refreshi.**
+4. Kam patří `INSERT`? **Do repository, ne do Latte.**
 
-## Nejčastější chyby
+## Kontrolní body a zdroje
 
-- `onSuccess` bez `isSuccess`/bez napojení callbacku,
-- ukládání dat před validací,
-- cena v Latte nebo formuláři jako nesmyslný text,
-- chybějící redirect,
-- kontrola pouze přes HTML atribut.
+- [ ] `/product/create` ukáže formulář.
+- [ ] Neplatná data nevytvoří řádek.
+- [ ] Platný jedinečný kód vznikne jednou a objeví se po redirectu.
+- [ ] Pravidla jsou v Nette Form i ve sdíleném validátoru.
 
-## Kontrolní body
-
-- `/product/create` zobrazí formulář,
-- chybná data se neuloží,
-- správná data vytvoří řádek,
-- po uložení následuje GET seznamu.
-
-## Shrnutí
-
-Nette Forms zjednodušují rutinu, ale princip bezpečnosti zůstává: nedůvěřovat vstupu, validovat na serveru a po změně použít redirect.
-
-## Co bude příště
-
-Stejný formulář znovu použijeme pro editaci a mazání ochráníme POST signálem se same-origin omezením.
+Čtěte [Nette Forms](https://doc.nette.org/en/forms), [formuláře v presenterech](https://doc.nette.org/en/forms/in-presenter), [validaci formulářů](https://doc.nette.org/en/forms/validation) a [Nette best practice: POST odkazy](https://doc.nette.org/en/best-practices/post-links).
 
 ## Stav projektu po lekci
 
-- Funguje přidání produktu přes Nette Form.
-- Editace a mazání ještě nejsou hotové.
-- Přibyly formulářové šablony a `ProductInputValidator`.
+Aplikace bezpečně vytváří produkt přes POST, validuje jej na serveru a po úspěchu používá PRG. Editaci stejným formulářem a mazání zatím doplníme.
 
-## Poznámka pro učitele
-
-Nechte studenty rozlišit HTML control a PHP objekt control. Při nedostatku času vynechte ruční reprodukci POSTu, ale nesmí se přeskočit serverová validace a PRG.
+**Příště:** načteme existující hodnoty do formuláře, vrátíme 404 pro chybné ID a mazání omezíme na POST.

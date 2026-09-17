@@ -1,28 +1,44 @@
 # Lekce 08 – Nette Database, repository a Dependency Injection
 
-**Čas:** 2 × 45 minut  
-**Výchozí stav:** MySQL má schema a seed.
+**Čas:** 2 × 45 minut · **Navazuje na:** [lekci 07](07-mysql-schema.md) · **Výsledek:** produkty čteme z MySQL přes repository.
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> `ProductRepository` načte produkt podle kódu i seznam z MySQL. Vysvětlíte, proč presenter nevytváří `new Explorer`, a ověříte, že skutečné heslo databáze nezůstalo v Gitu.
 
-`app/Model/Product/ProductRepository.php` načte produkty přes Nette Database Explorer. Připojení bude v `config/local.neon`, který nepatří do Git.
+## Nejdřív lidsky: co je závislost
 
-## Co se naučíme
+`ProductPresenter` chce seznam produktů. Kdyby si uvnitř sám vytvořil databázový objekt, musel by znát DSN, uživatele, heslo a způsob nastavení. To by byla pevná vazba a obtížné testování.
 
-- nastavit DSN, uživatele a lokální heslo,
-- použít `Explorer::table()`, `where()`, `order()`, `get()` a `fetch()`,
-- vysvětlit repository jako místo odpovědné za data,
-- rozebrat constructor property promotion a dependency injection.
+Lepší postup:
 
-## Kde jsme skončili
+```text
+1. Presenter řekne: „potřebuji ProductRepository“.
+2. Repository řekne: „potřebuji Explorer“.
+3. DI container vytvoří správné objekty podle konfigurace.
+4. Každý objekt dostane hotovou závislost v konstruktoru.
+```
 
-Databázové tabulky existují, ale presenter ještě neví, jak se k nim bezpečně dostat.
+> **🧠 Nejdřív přemýšlej**
+>
+> Kdyby se zítra změnilo připojení k databázi, v kolika presenterech byste chtěli upravovat heslo? Správná odpověď není „v každém“.
 
-## Nové pojmy
+## Konfigurace bez tajemství v repozitáři
 
-DSN, Explorer, repository, služba, DI container, constructor property promotion, `use`.
+**📄 Vzor:** `config/local.neon.example`
+**📄 Váš ignorovaný soubor:** `config/local.neon`
 
-## PHP princip
+Zkopírujte vzor a upravte jen své údaje. `Bootstrap` jej načte pouze tehdy, existuje-li soubor. Necommitujte jej – ověřte to před commitem přes `git status`.
+
+```text
+config/common.neon        bezpečné sdílené výchozí nastavení
+config/local.neon         skutečná lokální tajemství, ignorováno Gitem
+config/services.neon      služby, které může sestavit DI container
+```
+
+## Repository: jedno místo pro databázovou práci
+
+**📄 Fragment:** `app/Model/Product/ProductRepository.php`
 
 ```php
 final class ProductRepository
@@ -38,77 +54,91 @@ final class ProductRepository
 }
 ```
 
-`private Explorer $database` je vlastnost vytvořená z parametru konstruktoru. `$this` označuje aktuální repository a `->` volá metody objektu. `?ActiveRow` říká, že produkt nemusí existovat.
-
-## Nette princip
-
-Presenter chce produkty. Repository ví, jak je získat. DI container vytvoří Explorer i repository a předá Explorer do konstruktoru. Heslo zůstává v `config/local.neon`; `config/local.neon` je v `.gitignore`.
-
-## Jak to funguje
+`Explorer` je třída Nette Database. `table('product')` začne sestavovat dotaz, `where('code', $code)` přidá parametrizovanou podmínku a `fetch()` vyžádá jeden řádek nebo `null`.
 
 ```text
-ProductPresenter → ProductRepository → Explorer → MySQL
-       ↑                  ↑              ↑
-       └──────── DI container vytvoří závislosti ────────┘
+private Explorer $database
+   │       │          │
+   │       │          └─ název vlastnosti
+   │       └─ datový typ: očekáváme objekt Explorer
+   └─ vlastnost mohou používat jen metody repository
 ```
+
+`$this->database->table('product')` čteme zleva doprava: `$this` je aktuální repository, první `->` vezme jeho vlastnost `database`, druhé `->` volá metodu `table()` na objektu Explorer.
+
+> **⚠️ Pozor na SQL injection**
+>
+> Správně: `where('code', $code)`. Špatně: vytvořit SQL text typu `"code = '$code'"` spojením řetězců. Parametrizované API předá hodnotu databázi odděleně od struktury dotazu.
+
+## Seznam a lazy selection
+
+**📄 Fragment:** `ProductRepository::search()`
+
+```php
+$selection = $this->database->table('product')->order('created_at DESC');
+if ($status === 'active') {
+	$selection->where('active', true);
+}
+```
+
+`Selection` představuje dotaz, ne nutně okamžitě načtené všechny řádky. Další metody jej doplňují; na data saháme až při `count()`, iteraci nebo stránkování. To je důležité pro další lekci.
 
 ## Postup krok za krokem
 
-1. Zkopíruj `config/local.neon.example` jako `config/local.neon` a uprav pouze lokální údaje.
-2. Zkontroluj `config/common.neon`: obsahuje parametry, ne tajný osobní účet.
-3. Projdi `ProductRepository`. `where()` parametrizuje hodnotu; nesestavujeme SQL konkatenací vstupu.
-4. V `config/services.neon` ověř registraci repository. Třída je služba, nikoli globální proměnná.
-5. V presenteru dočasné pole nahraď `$this->products->search('', 'all', 1)`. Nech Tracy ukázat SQL dotaz.
-6. Ověř `/product` po spuštění Apache. Při chybě nejdříve zkontroluj DSN, databázi a první řádek Tracy.
+1. Vytvořte `config/local.neon` z příkladu. Zkontrolujte DSN, název databáze a připojení s lokálním MySQL.
+2. Otevřete `app/Bootstrap.php` a najděte podmínku `if (is_file($localConfig))`. Slovně vysvětlete, proč aplikace funguje i na počítači, kde lokální soubor zatím neexistuje, ale nedostane databázi.
+3. Otevřete `services.neon`. Najděte registraci `ProductRepository`; tím container ví, že jde o službu.
+4. Ve `ProductRepository.php` najděte importy `use Nette\Database\Explorer;` a `use …ActiveRow;`. `use` zkracuje názvy tříd, nevytváří žádné připojení.
+5. Spusťte aplikaci a přihlaste se výukovým účtem. Otevřete `/product`.
+6. V Tracy Database panelu najděte dotaz na tabulku `product`. To je důkaz, že data přicházejí z MySQL, ne z pole v PHP.
+7. Vyzkoušejte `findByCode('NB-001')` a neexistující `findByCode('NO-999')` například dočasným diagnostickým voláním v bezpečném lokálním testu. Druhý případ musí vrátit `null`, ne výjimku jen proto, že produkt neexistuje.
+8. Spusťte `git status --ignored` a ověřte, že `config/local.neon` se nenabízí ke commitu.
 
-## Co se právě stalo
+## Experiment: proč ne `new` v presenteru
 
-DI není kouzlo: objekt A deklaruje, že potřebuje B; container B vytvoří a předá. Díky tomu presenter nezná heslo, DSN ani konstrukci databázového klienta.
+Na papír napište dvě varianty:
 
-## Experiment
+```php
+// pevná vazba
+$repository = new ProductRepository(new Explorer(/* nastavení */));
 
-Vytvoř falešnou třídu `MemoryProductRepository` se stejnou metodou. Popiš, proč by šla použít v testu, kdyby presenter závisel na rozhraní místo konkrétní databáze.
+// závislost předaná konstruktoru
+public function __construct(private ProductRepository $products) {}
+```
 
-## Miniúkol
+U druhé varianty určete, kdo zná konfiguraci databáze (container), kdo zná dotaz (repository) a kdo rozhoduje o stránce (presenter). Tím odhalíte smysl DI bez slov „magie frameworku“.
 
-Přidej metodu `find(int $id): ?ActiveRow`. Použij `get($id)` a otestuj existující i neexistující ID.
+## Samostatný úkol
+
+Do repository doplňte a vyzkoušejte přesnou metodu z projektu:
+
+```php
+public function find(int $id): ?ActiveRow
+{
+	return $this->database->table('product')->get($id);
+}
+```
+
+Ověřte existující i neexistující ID. Proč je návratový typ `?ActiveRow` a ne prostě `ActiveRow`?
 
 ## Minikvíz
 
-1. Kam patří lokální heslo? **Do ignorovaného lokálního configu nebo proměnné prostředí.**
-2. Co vrátí `fetch()` při neexistujícím kódu? **`null`.**
-3. Kdo má znát SQL? **Repository/modelová vrstva.**
-4. Co je DI? **Předání potřebných objektů místo jejich skrytého vytváření uvnitř.**
+1. Kam patří lokální heslo? **Do ignorovaného `config/local.neon`.**
+2. Co vrátí `fetch()` při nenalezeném kódu? **`null`.**
+3. Kdo má znát SQL? **Repository / modelová vrstva.**
+4. Co je DI? **Předání potřebného objektu místo skrytého vytváření uvnitř.**
 
-## Nejčastější chyby
+## Kontrolní body a zdroje
 
-- commit `config/local.neon`,
-- `new Explorer` v každém presenteru,
-- SQL s hodnotou slepenou řetězcem,
-- špatný název tabulky nebo namespace,
-- připojení k jiné databázi než `nette_products`.
+- [ ] `/product` zobrazuje řádky z MySQL.
+- [ ] Neexistující produkt je uměn reprezentovat `null`.
+- [ ] V repository není SQL složené z uživatelského řetězce.
+- [ ] `config/local.neon` není mezi verzovanými změnami.
 
-## Kontrolní body
-
-- repository vrací skutečné řádky z MySQL,
-- neexistující kód vrací `null`,
-- filtr hodnoty se parametrizuje,
-- tajný lokální config není v `git status`.
-
-## Shrnutí
-
-Repository izoluje databázi, Explorer zjednodušuje dotazy a DI dodává závislosti. Tím připravujeme půdu pro filtrování a stránkování přímo v SQL.
-
-## Co bude příště
-
-Seznam přestane načítat vše do PHP. Přidáme databázové filtrování, stránkování a indexy.
+Čtěte [Nette Database Explorer](https://doc.nette.org/en/database/explorer), [připojení a konfiguraci databáze](https://doc.nette.org/en/database/core) a [Nette Dependency Injection](https://doc.nette.org/en/di).
 
 ## Stav projektu po lekci
 
-- Funguje načtení produktů z MySQL přes repository.
-- Přihlášení a formuláře ještě nejsou hotové.
-- Přibyly `ProductRepository`, konfigurace databáze a lokální šablona configu.
+Produkty se čtou z MySQL přes `ProductRepository`; presenter je nemusí hledat ani sestavovat SQL. Připojení zůstává lokální a tajné údaje jsou oddělené od sdílené konfigurace.
 
-## Poznámka pro učitele
-
-Nakreslete nejprve ruční variantu `new Repository`, potom ji nahraďte předáním v konstruktoru. Při nedostatku času lze vynechat alternativu s memory repository, ale nevynechávejte tajné konfigurace a parametrizaci.
+**Příště:** stejný dotaz rozšíříme o filtr a stránkování tak, aby databáze neposílala zbytečně všechny produkty do PHP.

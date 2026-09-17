@@ -1,97 +1,139 @@
 # Lekce 09 – Seznam produktů, filtrování a stránkování
 
-**Čas:** 2 × 45 minut  
-**Výchozí stav:** repository umí číst z MySQL.
+**Čas:** 2 × 45 minut · **Navazuje na:** [lekci 08](08-database-repository-di.md) · **Výsledek:** databázový seznam s filtrem a stránkami.
 
-## Co dnes vytvoříme
+> **🎯 Cíl lekce**
+>
+> Vyhledání podle kódu/názvu a filtrování stavu proběhne v MySQL. Stránka načte jen potřebné řádky a vy dokážete ukázat odpovídající `WHERE`, `COUNT` a omezení v Tracy.
 
-Administrační tabulku se stavem, kódem, názvem, skladem, cenou, filtrem a stránkováním. V `ProductRepository::search()` se omezení použijí před `LIMIT`.
+## Problém, který řešíme
 
-## Co se naučíme
-
-- filtrovat podle kódu/názvu a stavu,
-- vysvětlit `WHERE`, `LIMIT` a offset v principu,
-- používat `Paginator`,
-- přečíst dotaz v Tracy a porovnat správnou a špatnou variantu.
-
-## Kde jsme skončili
-
-Repository načítá jednotlivé produkty. Seznam zatím nemá řízený počet řádků.
-
-## Nové pojmy
-
-selection, `WHERE`, `LIKE`, `COUNT`, `LIMIT`, stránka, offset, Paginator, index.
-
-## PHP princip
-
-Presenter převede query parametry na očekávané typy a předá je repository. Latte pouze projde výslednou selection. Nepřidáváme do PHP vlastní pole všech produktů.
-
-## Nette princip
-
-Nette Database sestaví parametrizovaný SQL dotaz z řetězce metod. `Paginator` pomáhá spočítat stránku; samotná data zůstanou v databázové selection.
-
-## Jak to funguje
+Pro osm produktů se může zdát jedno, zda všechny načteme do PHP. Pro sto tisíc už ne. Správné místo pro výběr řádků je databáze, protože tam data leží a indexy jí mohou pomoci.
 
 ```text
-q/status/page → repository → WHERE → COUNT + LIMIT → Latte tabulka
+špatně:  SELECT všechny řádky → PHP pole → filtr → zobrazit 10
+správně: q + status + page → SQL WHERE + LIMIT → načíst jen stránku
 ```
+
+> **🧠 Nejdřív přemýšlej**
+>
+> Má `/product?q=note&page=2` po obnově ukázat stejnou druhou stránku? Co by se ztratilo, kdyby filtr nešel v URL?
+
+## Parametry přicházejí do presenteru
+
+**📄 Fragment:** `app/Presentation/Product/ProductPresenter.php`
+
+```php
+public function renderDefault(string $q = '', string $status = 'all', int $page = 1): void
+{
+	$result = $this->products->search($q, $status, $page);
+	$this->template->products = $result['items'];
+	$this->template->paginator = $result['paginator'];
+	$this->template->query = $q;
+	$this->template->status = $status;
+}
+```
+
+Je to fragment skutečného souboru. Presenter přijme hodnoty requestu, ale nevytváří SQL. Předá je metodě `search()` a šabloně dá výsledky i původní hodnoty, aby formulář nezapomněl, co uživatel hledal.
+
+## Repository skládá databázový dotaz
+
+**📄 Fragment:** `app/Model/Product/ProductRepository.php`
+
+```php
+$selection = $this->database->table('product')->order('created_at DESC');
+$query = trim($query);
+if ($query !== '') {
+	$like = '%' . $query . '%';
+	$selection->where('code LIKE ? OR name LIKE ?', $like, $like);
+}
+if ($status === 'active') {
+	$selection->where('active', true);
+} elseif ($status === 'inactive') {
+	$selection->where('active', false);
+}
+```
+
+Otazníky `?` nejsou ručně vložené znaky do uživatelova SQL. Jsou to zástupná místa; Explorer předá `$like` jako hodnoty. `%` v `LIKE` znamená libovolný počet znaků před nebo za hledaným textem.
+
+### Stránkování ve dvou krocích
+
+```php
+$paginator = new Paginator;
+$paginator->setItemCount($selection->count());
+$paginator->setItemsPerPage($itemsPerPage);
+$paginator->setPage(max(1, $page));
+
+return [
+	'items' => $selection->page($paginator->getPage(), $paginator->getItemsPerPage()),
+	'paginator' => $paginator,
+];
+```
+
+Nejprve potřebujeme počet odpovídajících řádků, abychom věděli, kolik stran existuje. Potom `page()` přidá omezení výsledku. Číslo stránky chráníme `max(1, $page)`, aby stránka nula nedávala smysl.
+
+> **⚠️ Omezení tohoto vyhledávání**
+>
+> `LIKE '%text%'` je pro malý školní katalog čitelný, ale počáteční `%` obvykle nevyužije běžný index stejně jako přesná shoda. Neřešíme to předčasnou složitostí; v lekci 15 se naučíme rozhodnout podle měření a velikosti dat.
+
+## Latte zachovává filtr v odkazu
+
+**📄 Fragment:** `app/Presentation/Product/default.latte`
+
+```latte
+<form class="filters" method="get" action="{link default}">
+	<label>Hledat <input type="search" name="q" value="{$query}"></label>
+	<button type="submit">Filtrovat</button>
+</form>
+
+<a n:href="default, q => $query, status => $status, page => $paginator->getPage() + 1">Další →</a>
+```
+
+`q => $query` je Latte zápis dvojice jméno–hodnota. Není to asociativní pole PHP napsané ve stejné syntaxi pro zábavu: umožní routeru vytvořit URL s parametry. Hodnota `{$query}` se při výpisu do HTML escapuje.
 
 ## Postup krok za krokem
 
-1. Otevři `/product`. Zadej do hledání `note`; zkontroluj zachování hodnoty po odeslání.
-2. Přepni stav na aktivní/neaktivní. Porovnej počet výsledků.
-3. V `ProductRepository::search()` najdi `selection->where(...)`, `count()` a `page(...)`. Komentář u změny má vysvětlit, proč filtr patří před stránkování.
-4. Naplň tabulku alespoň 20 řádky pomocí bezpečných demonstračních dat, aby šla vidět druhá stránka.
-5. Otevři Tracy Database panel. Zapiš, že dotaz načetl jen řádky aktuální stránky, zatímco počet je zvláštní dotaz.
+1. Přihlaste se a otevřete `/product`. Poznamenejte si výchozí URL a počet řádků.
+2. Vyhledejte `note`. Po odeslání musí URL obsahovat `q=note` a input musí dál ukazovat `note`.
+3. Přepněte stav na aktivní a potom neaktivní. Zapište, jak se mění výsledek; zvolte hodnotu `all` a ověřte návrat všech.
+4. V repository vyhledejte tři části: `$selection`, `where()` a `Paginator`. U každé napište, zda patří do presenteru, Latte, nebo repository – správně je repository.
+5. Přidejte dostatek výukových produktů, aby vznikla druhá stránka. Použijte bezpečné lokální testovací kódy a po pokusu je zase smažte.
+6. Klikněte na další stránku. Ověřte, že se `q` a `status` neztratily.
+7. V Tracy otevřete Database panel a najděte dotaz s `WHERE` a omezením. Poznamenejte si, že `COUNT` a načtení aktuální stránky mohou být dva smysluplné dotazy.
 
-## Co se právě stalo
+## Experiment: rozhodnutí před implementací
 
-Špatná varianta je `SELECT *` → všechno do PHP → filtrovat pole. Správná varianta posílá podmínku databázi. U velkého katalogu rozhoduje rozdíl mezi deseti a statisíci načtených řádků.
+Máme přidat filtr „prázdný sklad“. Napište odpovědi:
 
-## Experiment
+1. Je parametr vhodný pro GET, nebo POST?
+2. Kdo ověří povolené hodnoty: šablona, presenter, nebo repository?
+3. Kam patří podmínka `stock = 0`?
+4. Jak byste v Tracy ověřili, že se nefiltruje až v PHP?
 
-Do kopie repository dočasně vlož načtení všech řádků a PHP filtr. Porovnej Tracy čas a počet objektů s ostrou verzí. Změnu necommituj.
+Pak implementujte jen lokální variantu a sledujte dotaz. Nezavádějte index automaticky: nejprve zdůvodněte, podle jakého častého dotazu by se vyplatil.
 
-## Miniúkol
+## Samostatný úkol
 
-Přidej filtr „sklad 0“. Nejdříve napiš, zda potřebuje nový index, a proč. Ukaž, kde se hodnota validuje.
+Přidejte volbu „nízký sklad“ pro hodnoty `1–4`. Nevkládejte uživatelův text jako název sloupce do `order()` nebo `where()`. Podmínku si stanovte v kódu a jako hodnotu předejte pouze číselné hranice.
 
 ## Minikvíz
 
-1. Co omezuje počet načtených řádků? **Databázový `LIMIT`/`page()`.**
-2. Kde má proběhnout hledání podle názvu? **V SQL přes repository.**
-3. Je `count()` počet objektů načtených do PHP? **Ne, je to počet odpovídajících řádků v databázi.**
-4. Proč index není automaticky pro každý sloupec? **Zvyšuje cenu zápisů a zabírá místo.**
+1. Kde se má provést hledání podle názvu? **V repository/databázi.**
+2. K čemu je `LIMIT` nebo `page()`? **Omezí počet načtených řádků stránky.**
+3. Znamená `count()` počet PHP objektů na stránce? **Ne, zde počítá odpovídající databázové řádky.**
+4. Proč index není automaticky pro každý sloupec? **Stojí místo a zpomaluje zápisy.**
 
-## Nejčastější chyby
+## Kontrolní body a zdroje
 
-- stránkování až po načtení všeho,
-- ztráta filtru při odkazu na další stránku,
-- přímé vložení query do SQL,
-- `LIKE '%text%'` bez vysvětlení indexových omezení,
-- zobrazení čísla stránky bez ověření rozsahu.
+- [ ] Filtr i stránka jsou v URL a přežijí navigaci.
+- [ ] Databázový panel ukazuje omezený dotaz, ne načtení celé tabulky.
+- [ ] Hodnoty se do SQL nepřilepují řetězcem.
+- [ ] Tabulka správně vypíše prázdný výsledek.
 
-## Kontrolní body
-
-- `/product` vrací HTTP 200,
-- filtr a stránka se zachovají v URL,
-- Tracy ukazuje `WHERE` a `LIMIT`,
-- tabulka neobsahuje neomezený počet řádků.
-
-## Shrnutí
-
-Filtrování a stránkování patří do databázové vrstvy. Presenter řídí request, repository query a Latte výpis.
-
-## Co bude příště
-
-Vytvoříme produkt přes Nette Form a oddělíme serverovou validaci od klientského pohodlí.
+Čtěte [Nette Database: filtrování a řazení](https://doc.nette.org/en/database/explorer#toc-filtering-and-sorting), [Nette Paginator](https://doc.nette.org/en/utils/paginator) a [MySQL: optimalizace indexy](https://dev.mysql.com/doc/refman/8.4/en/optimization-indexes.html).
 
 ## Stav projektu po lekci
 
-- Funguje administrační seznam, hledání, stavové filtry a stránkování.
-- Přidávání a editace ještě řešíme v další lekci.
-- Změněny Product presenter, repository a template.
+Seznam je čtecí GET stránka se sdílitelnými filtry. Repository přenáší výběr do MySQL a Latte pouze zobrazuje aktuální stránku.
 
-## Poznámka pro učitele
-
-Tracy panel je dobrý okamžik, kdy studenti vidí, že abstrakce vytváří skutečné SQL. Při nedostatku času vynechte experiment se záměrně špatnou variantou, ale nevynechávejte kontrolu `LIMIT`.
+**Příště:** začneme data měnit; vytvoříme Nette Form, serverovou validaci a Post/Redirect/Get.
