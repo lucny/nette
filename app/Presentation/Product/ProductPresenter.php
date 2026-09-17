@@ -105,13 +105,6 @@ final class ProductPresenter extends Nette\Application\UI\Presenter
 		$this->redirect('default');
 	}
 
-	protected function createComponentPostForm(): Form
-	{
-		$form = new Form;
-		$form->setMethod('post');
-		return $form;
-	}
-
 	#[Nette\Application\Attributes\Requires(methods: 'POST')]
 	public function handleDelete(int $id): void
 	{

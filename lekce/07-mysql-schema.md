@@ -39,8 +39,8 @@ schema.sql → MySQL server → product/user tabulka → SELECT → ověřený v
 ## Postup krok za krokem
 
 1. Otevři `database/schema.sql`. Najdi `PRIMARY KEY` a `UNIQUE KEY uq_product_code`.
-2. Spusť `mysql -u root < database/schema.sql` v prostředí, kde je MySQL dostupné.
-3. Spusť `mysql -u root nette_products < database/seed.sql`.
+2. Spusť `mysql --default-character-set=utf8mb4 -u root < database/schema.sql` v prostředí, kde je MySQL dostupné.
+3. Spusť `mysql --default-character-set=utf8mb4 -u root nette_products < database/seed.sql`. Parametr zabrání poškození české diakritiky při importu.
 4. Ověř `SELECT code, name, price FROM product ORDER BY id;`.
 5. Zkus vložit stejný `code` podruhé. Databáze jej odmítne; aplikace se nesmí spoléhat pouze na kontrolu v prohlížeči.
 6. Porovnej `DECIMAL(12,2)` a `FLOAT`. Cena je přesná částka, nikoli přibližná fyzikální hodnota.

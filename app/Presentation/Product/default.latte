@@ -5,11 +5,10 @@
 	<label>Stav <select name="status"><option value="all" {if $status === 'all'}selected{/if}>Všechny</option><option value="active" {if $status === 'active'}selected{/if}>Aktivní</option><option value="inactive" {if $status === 'inactive'}selected{/if}>Neaktivní</option></select></label>
 	<button class="button secondary" type="submit">Filtrovat</button>
 </form>
-<form n:name=postForm id="postForm"></form>
 <div class="table-wrap"><table>
 	<thead><tr><th>Stav</th><th>Kód</th><th>Název</th><th>Sklad</th><th>Cena</th><th>Aktualizováno</th><th>Akce</th></tr></thead>
 	<tbody>
-	<tr n:foreach="$products as $product"><td><span n:class="badge, $product->active ? active : inactive">{$product->active ? 'aktivní' : 'neaktivní'}</span></td><td><code>{$product->code}</code></td><td>{$product->name}</td><td n:class="$product->stock < 5 ? low-stock">{$product->stock}</td><td>{$product->price|number:2,',',' '} Kč</td><td>{$product->updated_at|date:'j. n. Y H:i'}</td><td class="actions"><a n:href="edit $product->id">Upravit</a> <button class="link-button danger" form="postForm" formaction="{link delete! $product->id}" data-confirm="Opravdu odstranit {$product->name|escapeJs}?">Odstranit</button></td></tr>
+	<tr n:foreach="$products as $product"><td><span n:class="badge, $product->active ? active : inactive">{$product->active ? 'aktivní' : 'neaktivní'}</span></td><td><code>{$product->code}</code></td><td>{$product->name}</td><td n:class="$product->stock < 5 ? low-stock">{$product->stock}</td><td>{$product->price|number:2,',',' '} Kč</td><td>{$product->updated_at|date:'j. n. Y H:i'}</td><td class="actions"><a n:href="edit $product->id">Upravit</a> <form class="inline-form" method="post" action="{link delete! $product->id}" data-confirm="Opravdu odstranit {$product->name|escapeJs}?"><button class="link-button danger" type="submit">Odstranit</button></form></td></tr>
 	<tr n:if="$products->count() === 0"><td colspan="7" class="empty">Žádný produkt neodpovídá filtru.</td></tr>
 	</tbody>
 </table></div>

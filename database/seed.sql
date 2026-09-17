@@ -1,4 +1,5 @@
 USE nette_products;
+SET NAMES utf8mb4;
 INSERT INTO product (active, code, name, description, stock, price, created_at, updated_at) VALUES
 (1, 'NB-001', 'Notebook 15', 'Lehký školní notebook.', 12, 18990.00, '2026-09-01 09:00:00', '2026-09-01 09:00:00'),
 (1, 'KB-002', 'Klávesnice', 'USB klávesnice s českým rozložením.', 32, 899.00, '2026-09-02 09:00:00', '2026-09-02 09:00:00'),

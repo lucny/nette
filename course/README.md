@@ -17,7 +17,7 @@ Nette Application 3.3 podporuje PHP 8.3–8.5 a aktuální dokumentace použív�
 2. Ověř `php -v`, `composer --version`, `mysql --version`.
 3. Spusť `composer install`.
 4. Zkopíruj `config/local.neon.example` jako `config/local.neon` a nastav lokální DSN. Soubor je ignorovaný Gitem; skutečné heslo do repozitáře nepatří.
-5. Spusť `mysql -u root < database/schema.sql` a potom `mysql -u root nette_products < database/seed.sql`.
+5. Spusť `mysql --default-character-set=utf8mb4 -u root < database/schema.sql` a potom `mysql --default-character-set=utf8mb4 -u root nette_products < database/seed.sql`. Parametr je důležitý, protože seed obsahuje českou diakritiku.
 6. Nastav document root Apache na `www/`, nebo otevři lokální adresu projektu přes Laragon.
 7. Vytvoř výukový účet: `php bin/create-user.php student@example.test vyukove-heslo`. Nepoužívej toto heslo mimo lokální výuku.
 8. Otevři homepage a přihlas se přes `/sign/in`.
