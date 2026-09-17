@@ -1,0 +1,6 @@
+/vendor/
+/temp/
+/log/
+/config/local.neon
+/.skeleton/
+/.phpunit.result.cache
