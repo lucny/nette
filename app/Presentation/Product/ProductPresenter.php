@@ -49,12 +49,12 @@ final class ProductPresenter extends Nette\Application\UI\Presenter
 		}
 		$this->editingId = $id;
 		$this['productForm']->setDefaults([
-			'active' => (bool) $product->active,
-			'code' => $product->code,
-			'name' => $product->name,
-			'description' => $product->description,
-			'stock' => $product->stock,
-			'price' => $product->price,
+			'active' => (bool) $product['active'],
+			'code' => (string) $product['code'],
+			'name' => (string) $product['name'],
+			'description' => (string) $product['description'],
+			'stock' => (int) $product['stock'],
+			'price' => (float) $product['price'],
 		]);
 	}
 

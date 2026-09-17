@@ -19,10 +19,10 @@ final class Authenticator implements AuthenticatorInterface
 	public function authenticate(string $user, string $password): SimpleIdentity
 	{
 		$row = $this->users->findByEmail($user);
-		if ($row === null || !$this->passwords->verify($password, $row->password_hash)) {
+		if ($row === null || !$this->passwords->verify($password, (string) $row['password_hash'])) {
 			throw new AuthenticationException('Neplatný e-mail nebo heslo.');
 		}
 
-		return new SimpleIdentity($row->id, ['admin'], ['email' => $row->email]);
+		return new SimpleIdentity((int) $row['id'], ['admin'], ['email' => (string) $row['email']]);
 	}
 }

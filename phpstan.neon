@@ -3,5 +3,3 @@ parameters:
 	paths:
 		- app
 		- bin
-	ignoreErrors:
-		- '#Call to an undefined method Nette\\Application\\UI\\Presenter::restoreRequest#'

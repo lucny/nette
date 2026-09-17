@@ -95,7 +95,7 @@ final class ProductRepository
 			return false;
 		}
 
-		$this->update($existing->id, $data);
+		$this->update((int) $existing->getPrimary(), $data);
 		return true;
 	}
 }

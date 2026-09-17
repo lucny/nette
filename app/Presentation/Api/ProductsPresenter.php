@@ -22,15 +22,17 @@ final class ProductsPresenter extends Presenter
 			$this->sendResponse(new JsonResponse(['error' => 'Produkt nebyl nalezen.', 'code' => $code]));
 		}
 
+		$createdAt = $product['created_at'];
+		$updatedAt = $product['updated_at'];
 		$this->sendResponse(new JsonResponse([
-			'code' => $product->code,
-			'name' => $product->name,
-			'description' => $product->description,
-			'stock' => (int) $product->stock,
-			'price' => (float) $product->price,
-			'active' => (bool) $product->active,
-			'createdAt' => $product->created_at->format(DATE_ATOM),
-			'updatedAt' => $product->updated_at->format(DATE_ATOM),
+			'code' => (string) $product['code'],
+			'name' => (string) $product['name'],
+			'description' => (string) $product['description'],
+			'stock' => (int) $product['stock'],
+			'price' => (float) $product['price'],
+			'active' => (bool) $product['active'],
+			'createdAt' => $createdAt instanceof \DateTimeInterface ? $createdAt->format(DATE_ATOM) : (string) $createdAt,
+			'updatedAt' => $updatedAt instanceof \DateTimeInterface ? $updatedAt->format(DATE_ATOM) : (string) $updatedAt,
 		]));
 	}
 }
