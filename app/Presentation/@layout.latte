@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="cs">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>{ifset title}{include title|stripHtml} | {/ifset}Správa produktů</title>
+	<link rel="stylesheet" href="{$basePath}/assets/style.css">
+	<script src="{$basePath}/assets/app.js" defer></script>
+</head>
+<body>
+	<nav class="navbar">
+		<a class="brand" n:href="Home:default">Produkty<span>.</span></a>
+		<div class="nav-links">
+			<a n:href="Home:default">Úvod</a>
+			<a n:href="Product:default">Seznam</a>
+			{if $user->isLoggedIn()}
+				<a n:href="Import:default">CSV import</a>
+				<a n:href="Sign:out">Odhlásit</a>
+			{else}
+				<a n:href="Sign:in">Přihlásit</a>
+			{/if}
+		</div>
+	</nav>
+	<main class="container">
+		<div n:foreach="$flashes as $flash" class="flash {$flash->type}">{$flash->message}</div>
+		{include content}
+	</main>
+	<footer class="footer">Výukový projekt · Nette 3.3 · PHP 8.3+</footer>
+</body>
+</html>

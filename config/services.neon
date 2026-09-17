@@ -1,0 +1,16 @@
+services:
+	- App\Core\RouterFactory::createRouter
+	- App\Model\Product\ProductRepository
+	- App\Model\Product\ProductInputValidator
+	- App\Model\Product\ProductImporter
+	- App\Model\User\UserRepository
+	security.authenticator: App\Model\User\Authenticator
+
+
+search:
+	-	in: %appDir%
+		classes:
+			- *Facade
+			- *Factory
+			- *Repository
+			- *Service

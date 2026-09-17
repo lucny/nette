@@ -1,0 +1,4 @@
+active;code;name;description;stock;price
+true;NB-001;Notebook 15;Aktualizovaný popis z importu.;15;18490.00
+true;CA-009;USB-C kabel;Demonstrační nový produkt.;25;249.00
+false;ST-010;Stojan na monitor;Ukázkový neaktivní produkt.;0;899.00
