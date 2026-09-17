@@ -1,0 +1,7 @@
+# Zkopírujte jako config/local.neon a upravte podle svého MySQL.
+# Tento soubor neobsahuje skutečné heslo a je bezpečný pro výuku.
+parameters:
+	database:
+		dsn: 'mysql:host=127.0.0.1;dbname=nette_products;charset=utf8mb4'
+		user: root
+		password: ''
